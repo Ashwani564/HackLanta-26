@@ -1,7 +1,7 @@
 // The "what should I eat" flow: nearby restaurants -> two dishes at the one they pick.
 // Allergen and diet filtering all happens in the backend code (src/rag, src/pipeline); the model
 // only chooses among dishes that already passed, and this file writes the final dish message.
-import { allergenConfidence } from "../../src/pipeline/allergens.js";
+import { allergenConfidence, hasRealAllergy } from "../../src/pipeline/allergens.js";
 import { haversineKm } from "../../src/pipeline/filter.js";
 import { pickDishes, type Pick } from "../../src/pipeline/explain.js";
 import { appleMapsUrl } from "../../src/pipeline/format.js";
@@ -49,16 +49,24 @@ const norm = (xs: unknown): string[] =>
  * Merge what the model just passed with everything this chat has ever said. An allergy mentioned ten
  * messages ago must still apply, even after the chat history has scrolled past it.
  */
-export async function mergeRestrictions(spaceId: string, args: { allergies?: unknown; diets?: unknown }): Promise<Restrictions> {
+export async function mergeRestrictions(
+  spaceId: string,
+  args: { allergies?: unknown; diets?: unknown },
+  /** The saved profile of the person in a one-on-one chat. Applied on every call and never stored with the chat, so /reset can't drop it. */
+  profile?: Restrictions,
+): Promise<Restrictions> {
   const stored = (await getState<Restrictions>(profileKey(spaceId))) ?? { allergies: [], diets: [] };
-  const merged = {
+  const fromChat = {
     allergies: [...new Set([...stored.allergies, ...norm(args.allergies)])].sort(),
     diets: [...new Set([...stored.diets, ...norm(args.diets)])].sort(),
   };
-  if (merged.allergies.length !== stored.allergies.length || merged.diets.length !== stored.diets.length) {
-    await putState(profileKey(spaceId), merged, 7 * 86400);
+  if (fromChat.allergies.length !== stored.allergies.length || fromChat.diets.length !== stored.diets.length) {
+    await putState(profileKey(spaceId), fromChat, 7 * 86400);
   }
-  return merged;
+  return {
+    allergies: [...new Set([...fromChat.allergies, ...(profile?.allergies ?? [])])].sort(),
+    diets: [...new Set([...fromChat.diets, ...(profile?.diets ?? [])])].sort(),
+  };
 }
 
 export const clearRestrictions = (spaceId: string) => putState(profileKey(spaceId), { allergies: [], diets: [] }, 7 * 86400);
@@ -68,7 +76,8 @@ const EMPTY_PARSE: ParsedMessage = { intent: "food_request", positiveQuery: "", 
 export const constraintsFor = (r: Restrictions, budgetMaxUsd?: number): Constraints =>
   buildConstraints({ allergies: r.allergies, diets: r.diets, ...(budgetMaxUsd && budgetMaxUsd > 0 && { budgetMaxUsd }) }, EMPTY_PARSE);
 
-const hasAllergy = (c: Constraints) => c.allergens.length > 0 || c.unmappedAllergyTerms.length > 0;
+// Wording only ("since you've got the allergy"): avoiding pork or beef is not an allergy.
+const hasAllergy = hasRealAllergy;
 
 // ---------- nearby restaurants ----------
 

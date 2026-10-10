@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-rds-data";
 import { ITEM_KINDS, type AllergenSource, type Candidate, type Constraints, type Dish, type ItemKind } from "../types.js";
 import { dietAcceptableTags } from "../pipeline/filter.js";
-import { GLUTEN_FREE_CLAIM, keywordPatterns, termsPattern } from "../pipeline/allergens.js";
+import { ALLERGEN_KEYWORDS, GLUTEN_FREE_CLAIM, hasRealAllergy, keywordPatterns, termsPattern } from "../pipeline/allergens.js";
 import { EMBEDDING_DIMENSIONS } from "./embed.js";
 
 /**
@@ -99,6 +99,8 @@ export const SCHEMA_STATEMENTS = [
   "ALTER TABLE dishes ADD COLUMN IF NOT EXISTS cuisine text[] NOT NULL DEFAULT '{}'",
   "ALTER TABLE dishes ADD COLUMN IF NOT EXISTS price_source text",
   "ALTER TABLE dishes ADD COLUMN IF NOT EXISTS diet_source text",
+  // Dropped first: CREATE OR REPLACE VIEW cannot insert columns in the middle.
+  "DROP VIEW IF EXISTS dish_allergen_chart",
   // One row per dish, one boolean per major allergen plus diet flags, for reading the chart in plain SQL.
   // allergen_info: how far to trust it (chart/ingredients/menu_text = stated; inferred/estimated = our estimate;
   // unknown = blank, never treated as safe).
@@ -117,6 +119,11 @@ export const SCHEMA_STATEMENTS = [
       allergens_known AND 'fish' = ANY(allergens) AS fish,
       allergens_known AND 'shellfish' = ANY(allergens) AS shellfish,
       allergens_known AND 'sesame' = ANY(allergens) AS sesame,
+      allergens_known AND ('tree_nuts' = ANY(allergens) OR 'peanuts' = ANY(allergens)) AS nuts,
+      -- Beef and pork are read from the dish name and description with the same keyword list the filter uses.
+      -- They are inferred, never from a chart, so they are not gated on allergens_known.
+      (dish_name || ' ' || COALESCE(description, '')) ~* '${termsPattern(ALLERGEN_KEYWORDS.beef!, "pg")}' AS beef,
+      (dish_name || ' ' || COALESCE(description, '')) ~* '${termsPattern(ALLERGEN_KEYWORDS.pork!, "pg")}' AS pork,
       'vegan' = ANY(diet_tags) AS vegan,
       'vegetarian' = ANY(diet_tags) OR 'vegan' = ANY(diet_tags) AS vegetarian,
       'halal' = ANY(diet_tags) AS halal,
@@ -286,7 +293,8 @@ function buildWhere(
     params.restaurant_id = restaurantId;
   }
 
-  if (c.allergens.length > 0 || c.unmappedAllergyTerms.length > 0) where.push("allergens_known");
+  // Beef and pork are matched on dish text only, so they alone do not require a known allergen cell.
+  if (hasRealAllergy(c)) where.push("allergens_known");
   if (c.allergens.length > 0) {
     where.push("NOT (allergens && string_to_array(:allergens, ','))");
     params.allergens = c.allergens.join(",");

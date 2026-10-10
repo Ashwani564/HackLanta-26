@@ -1,6 +1,6 @@
 import { ITEM_KINDS, type Constraints, type ItemKind } from "../types.js";
 import { converseTool } from "../llm/bedrock.js";
-import { normalizeAllergies } from "./allergens.js";
+import { meatAvoidance, normalizeAllergies } from "./allergens.js";
 import { dietAcceptableTags } from "./filter.js";
 
 export const INTENTS = ["food_request", "followup", "profile_update", "smalltalk"] as const;
@@ -123,10 +123,13 @@ export interface BaselineConstraints {
  * allergies and diets are unions, the budget is the minimum, and the message can never remove a profile restriction.
  */
 export function buildConstraints(baseline: BaselineConstraints, parsed: ParsedMessage): Constraints {
-  const diets = [...new Set([...baseline.diets, ...parsed.diets].map((d) => d.trim().toLowerCase()).filter(Boolean))].sort();
+  const allDiets = [...new Set([...baseline.diets, ...parsed.diets].map((d) => d.trim().toLowerCase()).filter(Boolean))].sort();
+  // "no pork" / "no beef" as a diet is an avoidance, not a tag a dish must carry; route it to the allergen path.
+  const diets = allDiets.filter((d) => !meatAvoidance(d));
+  const meatAvoided = allDiets.flatMap((d) => meatAvoidance(d) ?? []);
   // Anyone avoiding gluten also avoids wheat. This only ever adds a restriction. The gluten_free tag is still required below.
   const glutenFree = diets.some((d) => dietAcceptableTags(d).includes("gluten_free"));
-  const { allergens, unmapped } = normalizeAllergies([...baseline.allergies, ...parsed.allergies, ...(glutenFree ? ["wheat"] : [])]);
+  const { allergens, unmapped } = normalizeAllergies([...baseline.allergies, ...parsed.allergies, ...meatAvoided, ...(glutenFree ? ["wheat"] : [])]);
   const budgets = [baseline.budgetMaxUsd, parsed.budgetMaxUsd].filter((b): b is number => b !== undefined);
   return {
     allergens,

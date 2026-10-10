@@ -16,6 +16,7 @@ import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./inv
 import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
+import { getUser } from "./users.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOC_TTL = 45 * 60;
@@ -45,6 +46,17 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const body = text !== undefined ? ` "${text}"` : "";
   console.log(`[${message.platform}] ${space.id} ${from}: ${message.content.type}${body}`);
 
+  // Who is texting, from the saved profiles. One-on-one chats only: nothing from a profile goes into a group.
+  const profile = !isGroupChat(space.id) ? await getUser(message.sender?.id) : undefined;
+  if (profile) console.log(`  known user: ${profile.name}`);
+  const restrict = (args: { allergies?: unknown; diets?: unknown }) =>
+    mergeRestrictions(space.id, args, profile && { allergies: profile.allergies, diets: profile.diets });
+  // The lower of their saved budget and anything they just said.
+  const budgetFor = (said: unknown) => {
+    const asked = typeof said === "number" && said > 0 ? said : undefined;
+    return [asked, profile?.budgetMaxUsd].filter((b): b is number => b !== undefined).reduce<number | undefined>((m, b) => (m === undefined ? b : Math.min(m, b)), undefined);
+  };
+
   // The next choice to offer as a poll. Sent after the reply text so the order reads naturally.
   let queued: PollSpec | undefined;
   // What the person just said (a transcript for voice notes). Used to read a restaurant name straight from their words.
@@ -61,9 +73,9 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
 
   /** The dish step: sends the two picks, then queues the "which one?" poll (or straight to directions). */
   const offerDishes = async (args: { restaurant: string; request?: string; allergies?: unknown; diets?: unknown; budget_usd?: unknown }) => {
-    const restrictions = await mergeRestrictions(space.id, args);
+    const restrictions = await restrict(args);
     const origin = (await getState<Origin>(`loc#${space.id}`)) ?? undefined;
-    const budget = typeof args.budget_usd === "number" ? args.budget_usd : undefined;
+    const budget = budgetFor(args.budget_usd);
     const out = await restaurantDishes(space.id, args, constraintsFor(restrictions, budget), origin);
     if (!out.text) return { error: out.error ?? "couldn't find that one", options: out.options };
     await sendBubbles(space, out.text);
@@ -167,8 +179,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         await putState(`loc#${space.id}`, origin, LOC_TTL);
         // Coordinates stay server-side; the model only gets the human-readable place and the nearby spots.
         const { latitude: _lat, longitude: _lng, ...forModel } = loc;
-        const restrictions = await mergeRestrictions(space.id, args);
-        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, args.budget_usd));
+        const restrictions = await restrict(args);
+        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, budgetFor(args.budget_usd)));
         console.log(`  at: ${loc.place ?? "?"} | nearby: ${near.restaurants.map((r) => `${r.name} ${r.walk_minutes}min`).join(", ") || "none"}${near.far_away ? " (far away)" : ""}`);
         // The spots go out as a poll right after the model's text; the model shouldn't list them itself.
         queued = restaurantPoll(near);
@@ -177,8 +189,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "nearby_restaurants": {
         const origin = await getState<Origin>(`loc#${space.id}`);
         if (!origin) return { error: "no location yet. call get_location first" };
-        const restrictions = await mergeRestrictions(space.id, args);
-        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, args.budget_usd));
+        const restrictions = await restrict(args);
+        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, budgetFor(args.budget_usd)));
         console.log(`  nearby: ${near.restaurants.map((r) => `${r.name} ${r.walk_minutes}min`).join(", ") || "none"}${near.far_away ? " (far away)" : ""}`);
         queued = restaurantPoll(near);
         return { ...near, poll_will_be_sent: !!queued };
@@ -205,7 +217,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const respond = async (text: string) => {
     currentText = text;
     await space.responding(async () => {
-      const reply = await chat(space.id, text, runTool);
+      const reply = await chat(space.id, text, runTool, profile && { name: profile.name });
       console.log(`  -> ${reply}`);
       if (reply !== NO_REPLY) await sendBubbles(space, reply);
     });

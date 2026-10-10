@@ -256,7 +256,7 @@ const loadHistory = async (spaceId: string) => (await getState<Message[]>(histor
 const saveHistory = (spaceId: string, history: Message[]) => putState(historyKey(spaceId), trim(history), HISTORY_TTL);
 const MAX_TOOL_ROUNDS = 3;
 
-export async function chat(spaceId: string, text: string, runTool: ToolRunner): Promise<string> {
+export async function chat(spaceId: string, text: string, runTool: ToolRunner, who?: { name: string }): Promise<string> {
   const history = await loadHistory(spaceId);
   const turn: Message[] = [{ role: "user", content: [{ text }] }];
 
@@ -266,7 +266,11 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
     const res = await client.send(
       new ConverseCommand({
         modelId: modelId(),
-        system: [{ text: SYSTEM }],
+        system: [
+          { text: SYSTEM },
+          // One-on-one chats only. Restrictions come from their saved profile and are applied by the code, not by you.
+          ...(who ? [{ text: `you're texting ${who.name}. use their name now and then, naturally. their saved allergies and diet are already applied to every search, so don't ask about them and don't list them back unless they ask.` }] : []),
+        ],
         messages: [...history, ...turn],
         inferenceConfig: { maxTokens: 400, temperature: 0.7 },
         toolConfig: {

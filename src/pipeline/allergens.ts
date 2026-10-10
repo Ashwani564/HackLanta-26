@@ -11,7 +11,26 @@ export const CANONICAL_ALLERGENS = [
   "shellfish",
   "fish",
   "sesame",
+  // Not allergens: foods people avoid for diet, religion or health. Detected from dish name and description only
+  // (no chart lists them), so they are never "stated" data and never require a known allergen cell.
+  "beef",
+  "pork",
 ] as const;
+
+/** The food-avoidances above. Everything else in CANONICAL_ALLERGENS is a real allergen. */
+export const MEAT_AVOIDANCES: readonly string[] = ["beef", "pork"];
+export const isRealAllergen = (a: string) => !MEAT_AVOIDANCES.includes(a);
+
+/** True if the constraints include a real allergen (or an unmapped allergy term, which we treat as real). */
+export const hasRealAllergy = (c: { allergens: readonly string[]; unmappedAllergyTerms: readonly string[] }) =>
+  c.allergens.some(isRealAllergen) || c.unmappedAllergyTerms.length > 0;
+
+/** "no pork", "pork-free", "no_beef", "red meat" -> the meats to avoid. Null when the term is something else. */
+export function meatAvoidance(term: string): string[] | null {
+  const t = term.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/^(no|non|without) /, "").replace(/ free$/, "");
+  if (t === "pork" || t === "beef") return [t];
+  return t === "red meat" ? ["beef", "pork"] : null;
+}
 
 const SYNONYMS: Record<string, string[]> = {
   milk: ["milk"],
@@ -57,6 +76,11 @@ const SYNONYMS: Record<string, string[]> = {
   fish: ["fish"],
   seafood: ["fish", "shellfish"],
   sesame: ["sesame"],
+  beef: ["beef"],
+  "no beef": ["beef"],
+  pork: ["pork"],
+  "no pork": ["pork"],
+  "red meat": ["beef", "pork"],
 };
 
 export interface NormalizedAllergies {
@@ -71,7 +95,7 @@ export function normalizeAllergies(terms: readonly string[]): NormalizedAllergie
   for (const raw of terms) {
     const term = raw.trim().toLowerCase().replace(/\s+/g, " ");
     if (!term) continue;
-    const hit = SYNONYMS[term] ?? SYNONYMS[term.replace(/ allergy$/, "")];
+    const hit = SYNONYMS[term] ?? SYNONYMS[term.replace(/ allergy$/, "")] ?? (meatAvoidance(term) ? meatAvoidance(term)! : undefined);
     if (hit) hit.forEach((a) => allergens.add(a));
     else unmapped.add(term);
   }
@@ -122,6 +146,9 @@ export const ALLERGEN_KEYWORDS: Record<string, string[]> = {
   shellfish: ["shrimp", "prawn", "crab", "lobster", "crawfish", "crayfish", "scallop", "clam", "oyster", "mussel", "squid", "calamari"],
   fish: ["fish", "salmon", "tuna", "tilapia", "cod", "anchov", "sardine", "mahi", "catfish", "snapper", "whiting"],
   sesame: ["sesame", "tahini", "hummus", "benne"],
+  // Superset on purpose (burgers and patties count as beef, "ham" also catches hamburger): a miss is worse than an extra drop.
+  beef: ["beef", "steak", "burger", "cheeseburger", "hamburger", "smashburger", "brisket", "meatball", "ribeye", "sirloin", "cheesesteak", "philly", "short rib", "oxtail", "bulgogi", "veal", "patty", "patties", "gyro", "kofta", "chili con carne"],
+  pork: ["pork", "bacon", "ham", "sausage", "pepperoni", "prosciutto", "salami", "chorizo", "carnitas", "pancetta", "bratwurst", "hot dog", "ribs", "lard", "chashu", "char siu", "gammon", "pig", "spam", "pulled pork"],
 };
 
 /** A dish that says "gluten free" in its own text is not rejected for wheat keywords alone (its allergen cell still applies). */

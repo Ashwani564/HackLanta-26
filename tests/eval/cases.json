@@ -240,5 +240,39 @@
   "mustAvoid": [
    "milk"
   ]
+ },
+ {
+  "id": "no-pork-profile",
+  "text": "hungry, something with eggs",
+  "profile": {
+   "diets": [
+    "no_pork"
+   ]
+  },
+  "mustAvoid": [
+   "pork"
+  ]
+ },
+ {
+  "id": "no-beef-text",
+  "text": "i dont eat beef, what should i get for lunch",
+  "mustAvoid": [
+   "beef"
+  ]
+ },
+ {
+  "id": "fish-and-nuts-profile",
+  "text": "what's good for dinner",
+  "profile": {
+   "allergies": [
+    "fish",
+    "nuts"
+   ]
+  },
+  "mustAvoid": [
+   "fish",
+   "tree_nuts",
+   "peanuts"
+  ]
  }
 ]
