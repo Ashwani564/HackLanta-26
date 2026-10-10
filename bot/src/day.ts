@@ -15,7 +15,7 @@ const DAY_TTL = 3 * 86400;
 /** Opaque id for URLs so phone numbers never appear in links. */
 export const keyFor = (userId: string) => createHash("sha256").update(userId).digest("hex").slice(0, 12);
 
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE }); // YYYY-MM-DD
+export const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE }); // YYYY-MM-DD
 
 export async function getDay(userId: string): Promise<Day> {
   return (await getDayByKey(keyFor(userId))) ?? freshDay(keyFor(userId));

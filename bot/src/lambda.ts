@@ -13,6 +13,7 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createHandler } from "./handler.js";
+import { handleHealthRequest, isHealthPath } from "./health.js";
 import { loadSecrets } from "./secrets.js";
 import { claimOnce } from "./store.js";
 
@@ -39,6 +40,13 @@ const getBot = () =>
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
+
+  // Apple Health sync from the phone's shortcut. Authenticated by the token in the path, not a Photon signature.
+  if (isHealthPath(event?.rawPath ?? "")) {
+    const text = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
+    const out = await handleHealthRequest(event.requestContext?.http?.method ?? "GET", event.rawPath, text);
+    return { statusCode: out.status, headers: { "content-type": "application/json", "cache-control": "no-store" }, body: JSON.stringify(out.body) };
+  }
 
   // Function URL request from Photon.
   if (event?.requestContext?.http?.method !== "POST") return { statusCode: 200, body: "dining-agent webhook" };
