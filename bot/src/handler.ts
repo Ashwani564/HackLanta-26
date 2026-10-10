@@ -78,6 +78,38 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     }
   };
 
+  /**
+   * They picked a dish: say what it runs, log it to today's pie and send the updated card, then ask about directions.
+   * One-on-one only (a group chat has no single person's day to update). Dishes with no calorie data aren't logged.
+   */
+  const sendChosenDish = async (out: Awaited<ReturnType<typeof chooseDish>>) => {
+    await sendBubbles(space, out.reaction ?? out.text ?? "");
+    const dish = out.dish;
+    let logged = false;
+    if (dish && dish.calories !== null && !isGroupChat(space.id) && message.sender) {
+      try {
+        const day = await logMeal(
+          message.sender.id,
+          {
+            name: dish.name,
+            calories: dish.calories,
+            protein: dish.proteinG ?? 0,
+            ...(typeof dish.carbsG === "number" && { carbs: dish.carbsG }),
+            ...(typeof dish.fatG === "number" && { fat: dish.fatG }),
+            price: dish.priceUsd ?? 0,
+          },
+          { auto: true },
+        );
+        await sendDayCard(space, day);
+        logged = true;
+      } catch (err) {
+        console.warn(`  couldn't log the picked dish: ${(err as Error).message}`);
+      }
+    }
+    if (out.ask) await space.send(out.ask);
+    return logged;
+  };
+
   /** The dish step: sends the two picks, then queues the "which one?" poll (or straight to directions). */
   const offerDishes = async (args: { restaurant: string; request?: string; allergies?: unknown; diets?: unknown; budget_usd?: unknown }) => {
     const restrictions = await restrict(args);
@@ -121,7 +153,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await space.send("hm, which one did you mean?");
           return {};
         }
-        await sendBubbles(space, out.text);
+        await sendChosenDish(out);
         return { said: out.text };
       }
     }
@@ -169,6 +201,10 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "show_day":
       case "set_goals": {
         const user = message.sender?.id ?? "unknown";
+        // A missing number would blank out the card's totals, so ask the model to estimate it instead of logging a hole.
+        if (name === "log_meal" && ![args.calories, args.protein_g].every((n) => typeof n === "number" && Number.isFinite(n))) {
+          return { error: "log_meal needs numbers for calories and protein_g (your best estimate); call it again with both filled in" };
+        }
         const day =
           name === "log_meal"
             ? await logMeal(user, {
@@ -185,7 +221,13 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         const card = await sendDayCard(space, day);
         // Numbers from Apple Health are private to the person, so only a one-on-one chat hears about them.
         const metrics = isGroupChat(space.id) ? undefined : await getMetrics(day.key);
-        return { card, ...summary(day), ...(metrics && { health: healthSummary(day, metrics) }) };
+        const repeat = "added" in day && day.added === false;
+        return {
+          card,
+          ...summary(day),
+          ...(repeat && { note: "that dish was already logged when they picked it, so it wasn't counted twice. just say the card is up to date" }),
+          ...(metrics && { health: healthSummary(day, metrics) }),
+        };
       }
       case "connect_health": {
         if (!message.sender) return { error: "don't know who's asking" };
@@ -225,8 +267,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "pick_dish": {
         const out = await chooseDish(space.id, String(args.dish ?? ""));
         if (!out.text) return { error: out.error ?? "couldn't match that dish" };
-        await sendBubbles(space, out.text);
-        return { sent: true, sent_text: out.text };
+        const logged = await sendChosenDish(out);
+        return { sent: true, sent_text: out.text, ...(logged && { logged_to_day: "already logged, and the pie card was sent. don't call log_meal for this dish." }) };
       }
       case "plan_meal": {
         if (message.platform !== "imessage" || !message.sender) return { error: "planning only works over iMessage" };

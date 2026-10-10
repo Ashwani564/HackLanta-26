@@ -285,6 +285,9 @@ export interface DishChoice {
   name: string;
   calories: number | null;
   proteinG: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+  priceUsd?: number | null;
 }
 
 /** The Apple Maps walking link for the last restaurant we picked dishes at. Only call after they say yes. */
@@ -335,6 +338,9 @@ export async function restaurantDishes(
     name: p.name ?? tidyName(p.dish.dishName),
     calories: p.dish.calories,
     proteinG: p.dish.proteinG,
+    carbsG: p.dish.carbsG,
+    fatG: p.dish.fatG,
+    priceUsd: p.dish.priceUsd,
   }));
   await putState(dishesKey(spaceId), { restaurant: place.name, choices, at: Date.now() }, 3 * 3600);
   return { text: composeDishMessage(place.name, picks, constraints), choices, restaurant: place.name };
@@ -400,7 +406,10 @@ export async function takeDirectionsAnswer(spaceId: string, text: string): Promi
 }
 
 /** They chose a dish: a short reaction with the numbers if we have them, then a plain-text offer of directions. */
-export async function chooseDish(spaceId: string, said: string): Promise<{ text?: string; error?: string }> {
+export async function chooseDish(
+  spaceId: string,
+  said: string,
+): Promise<{ text?: string; /** Just the reaction, before the directions question. */ reaction?: string; ask?: string; dish?: DishChoice; error?: string }> {
   const saved = await getState<{ restaurant: string; choices: DishChoice[] }>(dishesKey(spaceId));
   if (!saved) return { error: "no dishes offered yet" };
   const want = squash(said);
@@ -413,5 +422,6 @@ export async function chooseDish(spaceId: string, said: string): Promise<{ text?
       : [`nice pick, the ${dish.name}`, `good call on the ${dish.name}`, `the ${dish.name}, solid`],
   );
   await markAskedDirections(spaceId);
-  return { text: `${text}\n\n${askDirections()}` };
+  const ask = askDirections();
+  return { text: `${text}\n\n${ask}`, reaction: text, ask, dish };
 }

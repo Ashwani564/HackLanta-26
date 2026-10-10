@@ -6,9 +6,9 @@
 // read by the model or stored.
 import { getState, putState } from "./store.js";
 
-/** Names the bot answers to in groups. Set BOT_NAMES (comma-separated) once it has a name. */
+/** Names the bot answers to in groups. The bot is called Snacxx; set BOT_NAMES (comma-separated) to change or add names. */
 export const botNames = (): string[] =>
-  (process.env.BOT_NAMES ?? "bot,food bot,dining agent")
+  (process.env.BOT_NAMES ?? "snacxx,bot,food bot,dining agent")
     .split(",")
     .map((n) => n.trim().toLowerCase())
     .filter(Boolean);

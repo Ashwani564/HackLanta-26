@@ -67,7 +67,7 @@ Run `npx tsc` in both `bot/` and the repo root before committing (the root build
 ### Not verified / not done
 - The multi-pick plan polls, the location ask and the final card have only been tested in unit tests and `chat-sim plan`; `plan_meal` and the voice notes have **not been tried on real phones** (the poll flow, location flow, photos and Polly/Transcribe on Lambda were).
 - Group chats need the Business plan (ask Photon). The group poll logic still takes the first vote as the answer, and restrictions are per chat, not per person.
-- Bot has no name yet (set `BOT_NAMES` once chosen). "Today's Pie" card links need `PUBLIC_URL` (a hosted server); SAM 2 photo outlines need a GPU server (`SAM_URL`, Vultr was the idea).
+- The bot is named **Snacxx** (persona prompt, invite text, and the `BOT_NAMES` default). "Today's Pie" card links need `PUBLIC_URL` (a hosted server); SAM 2 photo outlines need a GPU server (`SAM_URL`, Vultr was the idea).
 - Demo prep: register judges' numbers as users, warm the database before presenting, record a backup video.
 - After the hackathon rotate every key that was pasted into chat (Photon project secret, Gemini, ElevenLabs).
 

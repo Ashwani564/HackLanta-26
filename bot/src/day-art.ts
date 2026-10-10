@@ -134,7 +134,7 @@ function pizza(cx: number, cy: number, f: number, over: number) {
 function menuCard(day: Day, t: ReturnType<typeof totals>, g: Day["goals"], over: number) {
   const x = 610, y = 34, w = 556, h = 562;
   const calLeft = g.calories - t.calories;
-  const budgetLeft = g.budget - t.spent;
+  const budgetLeft = g.budget - t.monthSpent;
 
   // Protein: 6 eggs; each fills with yolk as you get closer to the goal.
   const eggs = Array.from({ length: 6 }, (_, i) => {
@@ -175,7 +175,7 @@ function menuCard(day: Day, t: ReturnType<typeof totals>, g: Day["goals"], over:
     <text x="${x + w - 44}" y="${y + 308}" text-anchor="end" font-family="${NUMBER}" font-weight="700" font-size="32" fill="${INK}">${Math.round(t.protein)} / ${g.protein}g</text>
     ${eggs}
 
-    <text x="${x + 44}" y="${y + 440}" font-family="${DISPLAY}" font-size="32" letter-spacing="2" fill="${INK}">BUDGET</text>
+    <text x="${x + 44}" y="${y + 440}" font-family="${DISPLAY}" font-size="32" letter-spacing="2" fill="${INK}">MONTHLY BUDGET</text>
     <text x="${x + w - 44}" y="${y + 440}" text-anchor="end" font-family="${NUMBER}" font-weight="700" font-size="32" fill="${budgetLeft < 0 ? RED : INK}">${budgetLeft < 0 ? `$${(-budgetLeft).toFixed(0)} over` : `$${budgetLeft.toFixed(0)} left`}</text>
     ${coins}
 

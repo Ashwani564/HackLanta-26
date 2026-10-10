@@ -1,7 +1,7 @@
 // "Your day" iMessage App card: pizza art (day-art.ts) + caption text,
 // sent once per person per chat and then edited in place.
 import { app, edit } from "spectrum-ts";
-import { TIME_ZONE, type Day, totals } from "./day.js";
+import { TIME_ZONE, type Day, budgetLeft as monthLeft, totals } from "./day.js";
 import { dayJpeg } from "./day-art.js";
 
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "https://example.com";
@@ -31,16 +31,16 @@ async function layout(day: Day) {
   const t = totals(day);
   const g = day.goals;
   const calLeft = g.calories - t.calories;
-  const budgetLeft = g.budget - t.spent;
+  const budgetLeft = monthLeft(day);
   return {
     caption: `${fmt(t.calories)} / ${fmt(g.calories)} cal`,
-    subcaption: `${Math.round(t.protein)}g protein · $${budgetLeft.toFixed(0)} left`,
+    subcaption: `${Math.round(t.protein)}g protein · $${budgetLeft.toFixed(0)} left this month`,
     trailingCaption: calLeft >= 0 ? `${fmt(calLeft)} left` : `${fmt(-calLeft)} over`,
     trailingSubcaption: `${day.meals.length} meal${day.meals.length === 1 ? "" : "s"}`,
     image: new Uint8Array(await dayJpeg(day)),
     imageTitle: "Your day",
     imageSubtitle: new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: TIME_ZONE }),
-    summary: `${fmt(t.calories)}/${fmt(g.calories)} cal, ${Math.round(t.protein)}g protein, $${budgetLeft.toFixed(0)} left`,
+    summary: `${fmt(t.calories)}/${fmt(g.calories)} cal, ${Math.round(t.protein)}g protein, $${budgetLeft.toFixed(0)} left this month`,
   };
 }
 

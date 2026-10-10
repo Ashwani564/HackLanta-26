@@ -228,3 +228,9 @@ test("wantsPlan also catches an invite to eat with named people", () => {
   }
   for (const no of ["wanna grab lunch", "I'm hungry", "let's get lunch", "I want a burger with fries", "grab a bite"]) assert.ok(!wantsPlan(no), `should not match: ${no}`);
 });
+
+test("the default bot names include Snacxx", async () => {
+  const { botNames } = await import("../../bot/src/addressing.js");
+  assert.ok(botNames().includes("snacxx"));
+  assert.ok(mentionsBot("hey Snacxx where should we eat", botNames()));
+});

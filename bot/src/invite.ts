@@ -53,5 +53,5 @@ export function toE164(raw: string): string | undefined {
 }
 
 export const inviteMessage = (friend: string | undefined, inviter: string) =>
-  `hey${friend ? ` ${friend}` : ""}, ${inviter} added you. i'm the food bot, i help figure out where to eat around campus. ` +
+  `hey${friend ? ` ${friend}` : ""}, ${inviter} added you. i'm snacxx, i help figure out where to eat around campus. ` +
   `any allergies or stuff you don't eat? (reply stop to opt out)`;

@@ -40,7 +40,7 @@ Code in `src/plans.ts`; try it without texting anyone: `npx tsx --env-file=.env 
 
 **Group chats:** the bot stays quiet unless someone talks to it ("hey bot, where should we eat"). That person's follow-ups
 count for a couple of minutes; everyone else's chatter is dropped before anything reads or stores it. In one-on-one chats it
-always answers. Set `BOT_NAMES` (comma-separated) once the bot has a name. Groups only reach the bot on Photon's Business
+always answers. The bot is called Snacxx (`BOT_NAMES`, comma-separated, defaults to `snacxx,bot,food bot,dining agent`). Groups only reach the bot on Photon's Business
 (dedicated line) plan; Free and Pro use the shared pool, which can't see group chats.
 
 **Allergies and diets are enforced in code, never by the model.** Every dish passes the SQL filters and a second code check

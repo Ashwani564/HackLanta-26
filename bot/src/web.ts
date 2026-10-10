@@ -56,7 +56,7 @@ p{color:#7A4E2D;margin:0 0 16px;font-family:"American Typewriter",ui-monospace,m
 ul{list-style:none;padding:0;margin:16px 0 0}li{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:2px dashed #E4CBA8}
 small{display:block;color:#7A4E2D;font-size:13px}b{white-space:nowrap;font-weight:700}
 </style></head><body>
-<h1>TODAY'S PIE</h1><p>${Math.round(t.calories)} of ${day.goals.calories} cal · ${Math.round(t.protein)}g of ${day.goals.protein}g protein · $${t.spent.toFixed(2)} of $${day.goals.budget}</p>
+<h1>TODAY'S PIE</h1><p>${Math.round(t.calories)} of ${day.goals.calories} cal · ${Math.round(t.protein)}g of ${day.goals.protein}g protein · $${t.monthSpent.toFixed(2)} of $${day.goals.budget} spent this month</p>
 <img src="/day/${day.key}/pie.jpg" alt="Today's pie: calories, protein and budget left">
 <ul>${rows || "<li>No meals logged yet. Text a food photo!</li>"}</ul>
 </body></html>`;
