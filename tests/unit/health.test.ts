@@ -186,6 +186,7 @@ test("opening the sync link in a browser shows the setup page, which never print
   assert.ok(out.html?.includes('href="https://www.icloud.com/shortcuts/abc123"'));
   assert.ok(out.html?.includes("Run Immediately"));
   assert.ok(out.html?.includes('href="shortcuts://run-shortcut?name=Pie%20Sync"'), "Test it runs the shortcut by name");
+  assert.ok(!/border-radius:(?!0)/.test(out.html ?? ""), "square corners only");
   assert.ok(!out.html?.includes(token), "the page reads the link from its own address instead");
   assert.equal((await handleHealthRequest("GET", `/health/${token}/`)).status, 200);
   assert.equal((await handleHealthRequest("POST", `/health/${token}`)).status, 405);
@@ -279,7 +280,7 @@ test("the bare link is the page for a browser and the sync address for the short
   await logMeal(user, { name: "Pasta", calories: 600, protein: 20, carbs: 80, fat: 15, price: 0 });
 
   const page = await handleHealthRequest("GET", link, "", safari);
-  assert.ok(page.html?.includes("CONNECT APPLE HEALTH"));
+  assert.ok(page.html?.includes("<h1>Connect Apple Health</h1>"));
   assert.deepEqual((await call("GET", token, "status")).body, { synced_at: null }, "a browser looking at the page is not a sync");
 
   // The shortcut with its "/pending", "/ack" and "/metrics" cut off still does all three jobs.

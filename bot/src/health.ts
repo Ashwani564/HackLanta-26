@@ -232,40 +232,72 @@ export const CONNECTED_TEXT = "ok you're connected. whatever you log with me sho
  * The page a person sees when they open their sync link in a browser. The link itself is filled in by the
  * page from its own address, so the server never has to know (or print) where it is being served from.
  * The buttons run the shortcut by name, so the shared shortcut has to stay named "Pie Sync".
+ * Plain system type, square corners, hairlines, and it follows the phone's light or dark setting.
  */
 export function setupPage(shortcutUrl: string | undefined): string {
   const add = shortcutUrl
-    ? `<a class="btn" id="add" href="${esc(shortcutUrl)}">Add the Pie Sync shortcut</a>
-<small>Shortcuts asks for your link: press and hold the box, tap Paste, then Add Shortcut.</small>`
-    : `<small>The shortcut hasn't been published for this bot yet.</small>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    ? `<p>When Shortcuts asks for your link, touch and hold the field, tap Paste, then tap Add Shortcut.</p>
+<a class="btn" id="add" href="${esc(shortcutUrl)}">Add Pie Sync</a>`
+    : `<p>The shortcut hasn't been published for this bot yet.</p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Connect Apple Health</title><style>
-body{margin:0;background:#FFF6E5;color:#2B1B17;font:16px -apple-system,system-ui,sans-serif;padding:16px;max-width:520px}
-h1{font:28px Phosphate,Futura,"Arial Black",sans-serif;letter-spacing:2px;color:#C0392B;margin:8px 0 4px}
-p,small{color:#7A4E2D}small{display:block;margin-top:6px;font-size:13px}i{color:#7A4E2D;font-size:14px}
-ol{padding:0;margin:16px 0;list-style:none;counter-reset:n}ol>li{counter-increment:n;padding:16px 0;border-bottom:2px dashed #E4CBA8}
-ol>li>b:first-child::before{content:counter(n) ". "}
-ul{margin:8px 0;padding-left:20px;color:#7A4E2D;font-size:14px;line-height:1.6}
-input{width:100%;box-sizing:border-box;margin:12px 0 6px;padding:8px;border:2px solid #E4CBA8;border-radius:10px;background:#fff;font:12px ui-monospace,monospace;color:#2B1B17}
-button,.btn{display:inline-block;margin-top:6px;padding:10px 16px;border:0;border-radius:10px;background:#C0392B;color:#fff;font:600 16px -apple-system,system-ui,sans-serif;text-decoration:none}
-.quiet{background:none;color:#C0392B;border:2px solid #C0392B;padding:6px 12px;font-size:14px}
-#status{margin:10px 0 0;font-weight:600}#status.ok{color:#1E7B3C}.done{background:#1E7B3C}
-</style></head><body>
-<h1>CONNECT APPLE HEALTH</h1><p>About a minute. After this, meals you log in chat show up in Health.</p>
-<ol>
-<li><b>Copy your link</b><br><button id="copy">Copy my link</button>
+:root{--bg:#fff;--text:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--field:#f5f5f7;--link:#0066cc;--ok:#248a3d;--warn:#b25000}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--text:#f5f5f7;--muted:#a1a1a6;--line:#424245;--field:#1d1d1f;--link:#2997ff;--ok:#30d158;--warn:#ff9f0a}}
+*{box-sizing:border-box;border-radius:0}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:17px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+main{max-width:560px;margin:0 auto;padding:56px 24px calc(48px + env(safe-area-inset-bottom))}
+h1{margin:0 0 12px;font-size:34px;line-height:1.12;font-weight:700;letter-spacing:-.022em}
+.lede{margin:0 0 40px;font-size:19px;line-height:1.42;letter-spacing:-.01em}
+section{display:grid;grid-template-columns:28px minmax(0,1fr);padding:28px 0;border-top:1px solid var(--line)}
+section:last-of-type{border-bottom:1px solid var(--line)}
+.n{font-size:19px;line-height:1.26;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+h2{margin:0 0 6px;font-size:19px;line-height:1.26;font-weight:600;letter-spacing:-.012em}
+h2 span{margin-left:6px;font-weight:400;color:var(--muted)}
+p{margin:0;color:var(--muted);font-size:15px;line-height:1.47}
+.btn{display:block;width:100%;margin:16px 0 0;padding:14px 20px;border:1px solid var(--text);background:var(--text);color:var(--bg);font:inherit;font-size:17px;font-weight:500;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;-webkit-appearance:none;appearance:none}
+.btn:active{opacity:.7}
+.btn.done{background:transparent;color:var(--text)}
+.more{display:inline-block;margin-top:14px;color:var(--link);font-size:17px;text-decoration:none}
+input{display:block;width:100%;margin:12px 0 0;padding:12px;border:1px solid var(--line);background:var(--field);color:var(--text);font:13px/1.3 ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;-webkit-appearance:none;appearance:none}
+#copyhelp{margin-top:10px}
+ol{margin:14px 0 0;padding:0;list-style:none;border-top:1px solid var(--line)}
+ol li{padding:11px 0;border-bottom:1px solid var(--line);font-size:15px}
+#status{display:flex;align-items:baseline;gap:10px;margin-top:16px;font-size:15px;color:var(--muted)}
+#status::before{content:"";flex:none;width:8px;height:8px;background:var(--line)}
+#status.ok{color:var(--text)}
+#status.ok::before{background:var(--ok)}
+#status.warn::before{background:var(--warn)}
+.foot{margin-top:28px;font-size:13px}
+</style></head><body><main>
+<h1>Connect Apple Health</h1>
+<p class="lede">Meals you log in chat appear in Health. Setup takes about a minute.</p>
+<section><div class="n">1</div><div>
+<h2>Copy your link</h2>
+<p>You'll paste it in the next step.</p>
+<button class="btn" id="copy" type="button">Copy Link</button>
 <input id="link" readonly aria-label="Your private link">
-<small>It's private to you, so don't share it.</small></li>
-<li><b>Add the shortcut</b><br>${add}</li>
-<li><b>Test it</b><br><a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test it</a>
-<small>Say yes when it asks to connect and to use Health, then come back to this page.</small>
-<p id="status">Not connected yet.</p></li>
-<li><b>Make it automatic</b> <i>(optional)</i>
-<ul><li>Open Shortcuts and tap Automation</li><li>New Automation, then Message</li><li>Sender: pick me</li><li>Run Immediately</li><li>Choose Pie Sync</li></ul>
-<a class="btn quiet" href="shortcuts://">Open Shortcuts</a>
-<small>Then it syncs by itself whenever I text you. Skip it and you can still tap Sync now here any time.</small></li>
-</ol>
-<script>
+<p id="copyhelp" hidden>Touch and hold the link, then tap Copy.</p>
+</div></section>
+<section><div class="n">2</div><div>
+<h2>Add the shortcut</h2>
+${add}
+</div></section>
+<section><div class="n">3</div><div>
+<h2>Run it once</h2>
+<p>Allow the connection and access to Health when asked, then return to this page.</p>
+<a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test It</a>
+<div id="status" role="status">Not connected</div>
+</div></section>
+<section><div class="n">4</div><div>
+<h2>Sync automatically<span>Optional</span></h2>
+<p>Add an automation so Health updates each time the bot texts you. Without it, tap Sync Now on this page anytime.</p>
+<ol><li>Open Shortcuts and tap Automation</li><li>Tap New Automation, then Message</li><li>For Sender, choose the bot</li><li>Select Run Immediately</li><li>Choose Pie Sync</li></ol>
+<a class="more" href="shortcuts://">Open Shortcuts ›</a>
+</div></section>
+<p class="foot">This link is private to you. Don't share it.</p>
+</main><script>
 const path = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 const link = location.origin + path;
 const $ = (id) => document.getElementById(id);
@@ -283,29 +315,29 @@ const copy = async () => {
 };
 $("copy").onclick = async () => {
   const ok = await copy();
-  $("copy").textContent = ok ? "Copied" : "Couldn't copy";
-  $("copy").className = ok ? "done" : "";
-  if (!ok) $("link").insertAdjacentHTML("afterend", "<small>Press and hold the link above, then tap Copy.</small>");
+  $("copy").textContent = ok ? "Copied" : "Couldn't Copy";
+  $("copy").classList.toggle("done", ok);
+  $("copyhelp").hidden = ok;
 };
 
 // After a test, keep asking the server whether the phone has synced, for a couple of minutes.
 let tapped = 0, pollUntil = Date.now() + 120000;
+const say = (text, state) => { $("status").textContent = text; $("status").className = state; };
 const check = async () => {
   try {
     const s = await (await fetch(path + "/status", { cache: "no-store" })).json();
     if (s.synced_at) {
       const at = new Date(s.synced_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      $("status").textContent = "Connected. Last synced " + at + ".";
-      $("status").className = "ok";
-      $("run").textContent = "Sync now";
+      say("Connected. Last synced " + at + ".", "ok");
+      $("run").textContent = "Sync Now";
     } else if (tapped && Date.now() - tapped > 15000) {
-      $("status").textContent = "Nothing came through yet. If Shortcuts showed an error, your link didn't get pasted in: copy it in step 1, open Pie Sync in Shortcuts to edit it, clear the first box and paste. Then tap Test it again.";
+      say("Nothing came through. If Shortcuts showed an error, your link wasn't pasted in: copy it in step 1, open Pie Sync in Shortcuts to edit it, clear the first field and paste. Then try again.", "warn");
     }
   } catch {}
 };
 $("run").onclick = () => {
   tapped = Date.now(); pollUntil = tapped + 120000;
-  if ($("status").className !== "ok") $("status").textContent = "Waiting for your phone...";
+  if ($("status").className !== "ok") say("Waiting for your iPhone…", "");
 };
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { pollUntil = Date.now() + 120000; check(); } });
 setInterval(() => { if (!document.hidden && Date.now() < pollUntil) check(); }, 3000);

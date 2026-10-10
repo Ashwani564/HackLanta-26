@@ -170,9 +170,9 @@ in a group it asks them to message it directly). Opened in a browser, that link 
    failed silently on a real iPhone; the wrong thing then gets pasted and the shortcut calls the wrong address,
    which shows up as "couldn't convert from Rich Text to Dictionary".)
 2. **Add the shortcut**: opens the prebuilt shortcut; they paste the link when Shortcuts asks.
-3. **Test it**: runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
-   The bot also texts them once to say it worked. The button then becomes **Sync now**.
-4. **Make it automatic** (optional): Shortcuts → Automation → New → Message → Sender: the bot → Run Immediately →
+3. **Run it once** (the **Test It** button): runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
+   The bot also texts them once to say it worked. The button then becomes **Sync Now**.
+4. **Sync automatically** (optional): Shortcuts → Automation → New → Message → Sender: the bot → Run Immediately →
    Pie Sync. Automations can't be shared by link, so each person adds this once. From then on every text from the
    bot runs the sync, which is right after they logged something and while the phone is unlocked.
 
