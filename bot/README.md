@@ -1,6 +1,6 @@
 # iMessage dining agent (bot)
 
-An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](https://photon.codes/docs/spectrum-ts/introduction) for iMessage and Gemini for the AI.
+An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](https://photon.codes/docs/spectrum-ts/introduction) for iMessage and Gemini for the AI. Voice uses [ElevenLabs](https://elevenlabs.io) (Scribe for speech-to-text, ElevenLabs TTS for voice notes) when a key is set, and falls back to Gemini otherwise.
 
 ## What it can do
 
@@ -10,7 +10,7 @@ An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](
 | A food photo | Estimated calories and protein for the dish. |
 | A menu photo | Best 1-2 picks, with calorie estimates. |
 | "make a poll for where to eat" | Sends a native iMessage poll. Votes are logged. |
-| "send me a voice note …" / a voice message | Replies with a spoken voice note (Gemini TTS). |
+| "send me a voice note …" / a voice message | Transcribes your voice note (ElevenLabs Scribe) and replies with a spoken voice note (ElevenLabs TTS); falls back to Gemini. |
 | "where am I?" / "food near me" | Sends a Find My request card, then reads the shared location. |
 | `/reset` | Clears that chat's memory. |
 
@@ -20,6 +20,7 @@ An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](
 - **Node.js 20.6+** (`node --version`).
 - A **Photon** project ([app.photon.codes](https://app.photon.codes)) with iMessage enabled.
 - A **Gemini API key** ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
+- Optional: an **ElevenLabs API key** ([elevenlabs.io](https://elevenlabs.io) → Settings → API Keys) for ElevenLabs voice. The free tier works — TTS outputs MP3 and STT uses Scribe. Without a key, voice falls back to Gemini.
 
 ## Setup
 
@@ -59,7 +60,7 @@ bot/
 ├── src/
 │   ├── index.ts     # Spectrum app: receives messages and routes by type (text/photo/voice/poll vote)
 │   ├── gemini.ts    # System prompt, tool definitions, tool-call loop, per-chat memory, model fallback
-│   ├── voice.ts     # Gemini TTS -> .m4a voice note; inbound voice -> WAV for Gemini
+│   ├── voice.ts     # ElevenLabs (Scribe STT + TTS) with Gemini fallback -> .m4a voice note / transcript
 │   └── findmy.ts    # Find My location via @photon-ai/advanced-imessage
 ├── scripts/
 │   └── send.ts      # CLI: send a message to a user

@@ -23,6 +23,10 @@ Keep it to one or two short lines. No markdown.`;
 
 export const VOICE_PROMPT = "This is my voice note. Respond to what I said, and reply with a voice note.";
 
+// Used when Scribe transcribed the voice note for us; signals "a voice note arrived" so the
+// model still triggers send_voice_note, while responding to the transcribed text.
+export const VOICE_TRANSCRIPT_PROMPT = "I sent you a voice note. Respond to what I said, and reply with a voice note. Transcript:";
+
 const TOOLS: FunctionDeclaration[] = [
   {
     name: "create_poll",

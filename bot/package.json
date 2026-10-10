@@ -11,6 +11,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.71.0",
     "@google/genai": "^2.28.0",
     "@photon-ai/advanced-imessage": "^2.2.0",
     "spectrum-ts": "^12.10.1"

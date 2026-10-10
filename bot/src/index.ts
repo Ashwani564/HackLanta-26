@@ -1,9 +1,9 @@
 import { Spectrum, poll, voice } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { terminal } from "spectrum-ts/providers/terminal";
-import { chat, reset, PHOTO_PROMPT, VOICE_PROMPT, type ToolRunner } from "./gemini.js";
+import { chat, reset, PHOTO_PROMPT, VOICE_PROMPT, VOICE_TRANSCRIPT_PROMPT, type ToolRunner } from "./gemini.js";
 import { locate } from "./findmy.js";
-import { speak, toWav } from "./voice.js";
+import { speak, toWav, transcribe } from "./voice.js";
 
 // MODE=terminal runs locally with no credentials (tuichat UI).
 // MODE=imessage (default) connects to Photon's managed iMessage lines.
@@ -95,10 +95,17 @@ async function handle(space: any, message: any) {
         const bytes = await message.content.read();
         console.log(`  voice ${message.content.mimeType} ${bytes.length} bytes`);
         const wav = await toWav(bytes);
-        await respond([
-          { inlineData: { mimeType: "audio/wav", data: wav.toString("base64") } },
-          { text: VOICE_PROMPT },
-        ]);
+        const transcript = await transcribe(wav);
+        if (transcript) {
+          console.log(`  transcript: ${transcript}`);
+          await respond([{ text: `${VOICE_TRANSCRIPT_PROMPT} "${transcript}"` }]);
+        } else {
+          // No ElevenLabs key or Scribe failed: let Gemini understand the raw audio.
+          await respond([
+            { inlineData: { mimeType: "audio/wav", data: wav.toString("base64") } },
+            { text: VOICE_PROMPT },
+          ]);
+        }
         break;
       }
       case "poll_option":
