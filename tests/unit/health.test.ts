@@ -185,6 +185,7 @@ test("opening the sync link in a browser shows the setup page, which never print
   assert.equal(out.status, 200);
   assert.ok(out.html?.includes('href="https://www.icloud.com/shortcuts/abc123"'));
   assert.ok(out.html?.includes("Run Immediately"));
+  assert.ok(out.html?.includes('href="shortcuts://run-shortcut?name=Pie%20Sync"'), "Test it runs the shortcut by name");
   assert.ok(!out.html?.includes(token), "the page reads the link from its own address instead");
   assert.equal((await handleHealthRequest("GET", `/health/${token}/`)).status, 200);
   assert.equal((await handleHealthRequest("POST", `/health/${token}`)).status, 405);
@@ -228,4 +229,40 @@ test("the metrics route takes a Health Auto Export body as it is", async () => {
   assert.equal((await call("POST", token, "metrics", body)).status, 200);
   assert.equal((await getMetrics(keyFor(user)))?.activeKcal, 512);
   assert.equal((await call("POST", token, "metrics", { data: { metrics: [] } })).status, 400);
+});
+
+// ---------- knowing whether a phone has synced ----------
+
+test("status is empty until the phone's first sync, then says when it last synced", async () => {
+  const token = await syncTokenFor(person());
+  assert.deepEqual((await call("GET", token, "status")).body, { synced_at: null });
+  assert.equal((await call("POST", token, "status")).status, 405);
+
+  const before = Date.now();
+  await call("GET", token, "pending");
+  const { synced_at } = (await call("GET", token, "status")).body as { synced_at: string };
+  assert.ok(Date.parse(synced_at) >= before - 5 && Date.parse(synced_at) <= Date.now());
+  // Looking at the page or its status is not a sync.
+  await handleHealthRequest("GET", `/health/${token}`);
+  assert.equal(((await call("GET", token, "status")).body as { synced_at: string }).synced_at, synced_at);
+});
+
+test("the person is told once, on their first sync only, and a failed notice never breaks the sync", async () => {
+  const user = person();
+  const token = await syncTokenFor(user);
+  const told: string[] = [];
+  const hooks = { onFirstSync: (who: string) => void told.push(who) };
+  const path = `/health/${token}/pending`;
+
+  await handleHealthRequest("GET", `/health/${token}/status`, "", hooks); // not a sync
+  assert.deepEqual(told, []);
+  assert.equal((await handleHealthRequest("GET", path, "", hooks)).status, 200);
+  assert.equal((await handleHealthRequest("GET", path, "", hooks)).status, 200);
+  assert.deepEqual(told, [user]);
+
+  const other = await syncTokenFor(person());
+  const failing = { onFirstSync: async () => { throw new Error("photon is down"); } };
+  const res = await handleHealthRequest("GET", `/health/${other}/pending`, "", failing);
+  assert.equal(res.status, 200);
+  assert.deepEqual((res.body as { meals: unknown[] }).meals, []);
 });

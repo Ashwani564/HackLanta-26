@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import type { Goal } from "../../src/pipeline/parse.js";
 import { baseUrl } from "./cards.js";
 import { getDayByKey, keyFor, today, totals, type Day, type Goals } from "./day.js";
-import { getState, putState } from "./store.js";
+import { claimOnce, getState, putState } from "./store.js";
 
 export type PendingMeal = { id: string; name: string; calories: number; protein: number; carbs?: number; fat?: number; at: string };
 export type HealthMetrics = { date: string; activeKcal?: number; steps?: number; weightKg?: number; updatedAt: string };
@@ -21,6 +21,8 @@ const tokenKey = (token: string) => `healthtoken#${token}`;
 const userKey = (key: string) => `healthuser#${key}`;
 const syncedKey = (key: string) => `healthsynced#${key}`;
 const metricsKey = (key: string) => `health#${key}`;
+const ownerKey = (key: string) => `healthowner#${key}`;
+const seenKey = (key: string) => `healthseen#${key}`;
 
 /** The person's sync token, made on first use. Random on purpose: keyFor() is a hash of a phone number. */
 export async function syncTokenFor(userId: string): Promise<string> {
@@ -29,8 +31,15 @@ export async function syncTokenFor(userId: string): Promise<string> {
   if (existing) return existing;
   const token = randomBytes(18).toString("base64url");
   await putState(tokenKey(token), key);
+  await putState(ownerKey(key), userId); // so the bot can text them when their phone first syncs
   await putState(userKey(key), token);
   return token;
+}
+
+/** Note that the phone just synced. Returns who to tell, the one time this is their first sync ever. */
+async function markSynced(key: string): Promise<string | undefined> {
+  await putState(seenKey(key), new Date().toISOString());
+  return (await claimOnce(`healthfirst#${key}`, 365 * 86400)) ? getState<string>(ownerKey(key)) : undefined;
 }
 
 // Where the phone reaches us. Set PUBLIC_URL locally; on Lambda the Function URL is learned from incoming
@@ -191,8 +200,11 @@ export function dayGoals(day: Day, metrics?: HealthMetrics): Goal[] {
 /** `html` is set for the setup page; everything else answers with `body` as JSON. */
 export type HealthResponse = { status: number; body?: unknown; html?: string };
 
-const ROUTE = /^\/health\/([A-Za-z0-9_-]{16,64})(?:\/(pending|ack|metrics))?\/?$/;
-const METHODS = { setup: "GET", pending: "GET", ack: "POST", metrics: "POST" } as const;
+const ROUTE = /^\/health\/([A-Za-z0-9_-]{16,64})(?:\/(pending|ack|metrics|status))?\/?$/;
+const METHODS = { setup: "GET", status: "GET", pending: "GET", ack: "POST", metrics: "POST" } as const;
+
+/** Things the routes can set off that need the running bot (only the Lambda has one to hand). */
+export type HealthHooks = { onFirstSync?: (userId: string) => Promise<unknown> | unknown };
 
 export const isHealthPath = (path: string) => path.startsWith("/health/");
 
@@ -206,38 +218,78 @@ export function healthReply(out: HealthResponse): { status: number; headers: Rec
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+/** Sent by the bot the first time someone's phone syncs. */
+export const CONNECTED_TEXT = "ok you're connected. whatever you log with me shows up in apple health now";
+
 /**
  * The page a person sees when they open their sync link in a browser. The link itself is filled in by the
  * page from its own address, so the server never has to know (or print) where it is being served from.
+ * The buttons run the shortcut by name, so the shared shortcut has to stay named "Pie Sync".
  */
 export function setupPage(shortcutUrl: string | undefined): string {
   const add = shortcutUrl
-    ? `<a class="btn" href="${esc(shortcutUrl)}">Add the Pie Sync shortcut</a><small>When it asks for your link, paste it.</small>`
+    ? `<a class="btn" id="add" href="${esc(shortcutUrl)}">Add the Pie Sync shortcut</a>
+<small>Your link is copied when you tap. Paste it when Shortcuts asks for it.</small>`
     : `<small>The shortcut hasn't been published for this bot yet.</small>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Connect Apple Health</title><style>
 body{margin:0;background:#FFF6E5;color:#2B1B17;font:16px -apple-system,system-ui,sans-serif;padding:16px;max-width:520px}
 h1{font:28px Phosphate,Futura,"Arial Black",sans-serif;letter-spacing:2px;color:#C0392B;margin:8px 0 4px}
-p,small{color:#7A4E2D}small{display:block;margin-top:6px;font-size:13px}
-ol{padding:0;margin:16px 0;list-style:none;counter-reset:n}li{counter-increment:n;padding:16px 0;border-bottom:2px dashed #E4CBA8}
-li b:first-child::before{content:counter(n) ". "}
-input{width:100%;box-sizing:border-box;margin:8px 0;padding:10px;border:2px solid #E4CBA8;border-radius:10px;background:#fff;font:13px ui-monospace,monospace;color:#2B1B17}
-button,.btn{display:inline-block;margin-top:4px;padding:10px 16px;border:0;border-radius:10px;background:#C0392B;color:#fff;font:600 16px -apple-system,system-ui,sans-serif;text-decoration:none}
+p,small{color:#7A4E2D}small{display:block;margin-top:6px;font-size:13px}i{color:#7A4E2D;font-size:14px}
+ol{padding:0;margin:16px 0;list-style:none;counter-reset:n}ol>li{counter-increment:n;padding:16px 0;border-bottom:2px dashed #E4CBA8}
+ol>li>b:first-child::before{content:counter(n) ". "}
+ul{margin:8px 0;padding-left:20px;color:#7A4E2D;font-size:14px;line-height:1.6}
+input{width:100%;box-sizing:border-box;margin:12px 0 6px;padding:8px;border:2px solid #E4CBA8;border-radius:10px;background:#fff;font:12px ui-monospace,monospace;color:#2B1B17}
+button,.btn{display:inline-block;margin-top:6px;padding:10px 16px;border:0;border-radius:10px;background:#C0392B;color:#fff;font:600 16px -apple-system,system-ui,sans-serif;text-decoration:none}
+.quiet{background:none;color:#C0392B;border:2px solid #C0392B;padding:6px 12px;font-size:14px}
+#status{margin:10px 0 0;font-weight:600}#status.ok{color:#1E7B3C}
 </style></head><body>
-<h1>CONNECT APPLE HEALTH</h1><p>Three steps, about a minute. Meals you log in chat then show up in Health.</p>
+<h1>CONNECT APPLE HEALTH</h1><p>About a minute. After this, meals you log in chat show up in Health.</p>
 <ol>
-<li><b>Copy your link</b><input id="link" readonly><button id="copy">Copy</button><small>It's private to you. Don't share it.</small></li>
-<li><b>Add the shortcut</b><br>${add}</li>
-<li><b>Make it automatic</b><small>Shortcuts app → Automation → New Automation → Message → Sender: the bot → Run Immediately → Pie Sync.</small></li>
+<li><b>Add the shortcut</b><br>${add}
+<input id="link" readonly aria-label="Your private link"><button id="copy" class="quiet">Copy my link</button>
+<small>Only needed if paste comes up empty. The link is private to you, so don't share it.</small></li>
+<li><b>Test it</b><br><a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test it</a>
+<small>Say yes when it asks to connect and to use Health, then come back to this page.</small>
+<p id="status">Not connected yet.</p></li>
+<li><b>Make it automatic</b> <i>(optional)</i>
+<ul><li>Open Shortcuts and tap Automation</li><li>New Automation, then Message</li><li>Sender: pick me</li><li>Run Immediately</li><li>Choose Pie Sync</li></ul>
+<a class="btn quiet" href="shortcuts://">Open Shortcuts</a>
+<small>Then it syncs by itself whenever I text you. Skip it and you can still tap Sync now here any time.</small></li>
 </ol>
 <script>
-const link = location.origin + location.pathname.replace(/\\/+$/, "");
-const box = document.getElementById("link"), btn = document.getElementById("copy");
-box.value = link;
-btn.onclick = async () => {
-  try { await navigator.clipboard.writeText(link); } catch { box.select(); document.execCommand("copy"); }
-  btn.textContent = "Copied";
+const path = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
+const link = location.origin + path;
+const $ = (id) => document.getElementById(id);
+$("link").value = link;
+const copy = async () => {
+  try { await navigator.clipboard.writeText(link); } catch { $("link").select(); document.execCommand("copy"); }
 };
+$("copy").onclick = async () => { await copy(); $("copy").textContent = "Copied"; };
+if ($("add")) $("add").onclick = async (e) => { e.preventDefault(); await copy(); location.href = $("add").href; };
+
+// After a test, keep asking the server whether the phone has synced, for a couple of minutes.
+let tapped = 0, pollUntil = Date.now() + 120000;
+const check = async () => {
+  try {
+    const s = await (await fetch(path + "/status", { cache: "no-store" })).json();
+    if (s.synced_at) {
+      const at = new Date(s.synced_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      $("status").textContent = "Connected. Last synced " + at + ".";
+      $("status").className = "ok";
+      $("run").textContent = "Sync now";
+    } else if (tapped && Date.now() - tapped > 15000) {
+      $("status").textContent = "Nothing came through yet. Tap Test it again and allow both prompts.";
+    }
+  } catch {}
+};
+$("run").onclick = () => {
+  tapped = Date.now(); pollUntil = tapped + 120000;
+  if ($("status").className !== "ok") $("status").textContent = "Waiting for your phone...";
+};
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { pollUntil = Date.now() + 120000; check(); } });
+setInterval(() => { if (!document.hidden && Date.now() < pollUntil) check(); }, 3000);
+check();
 </script></body></html>`;
 }
 
@@ -268,20 +320,28 @@ export function fromHealthAutoExport(body: Record<string, unknown>, day = today(
 
 /**
  *   GET  /health/<token>           -> the setup page (HTML)
+ *   GET  /health/<token>/status    -> { synced_at } (when the phone last synced; the setup page polls this)
  *   GET  /health/<token>/pending   -> { meals: [{ id, name, calories, protein, carbs?, fat?, at }] }
  *   POST /health/<token>/ack       { ids: [...] }                              -> { acked: n }
  *   POST /health/<token>/metrics   { active_kcal, steps, weight_kg | weight_lb } -> { ok: true }
  *                                  (or a Health Auto Export body, see fromHealthAutoExport)
  * An unknown token looks exactly like an unknown path.
  */
-export async function handleHealthRequest(method: string, path: string, rawBody = ""): Promise<HealthResponse> {
+export async function handleHealthRequest(method: string, path: string, rawBody = "", hooks: HealthHooks = {}): Promise<HealthResponse> {
   const match = path.split("?")[0]!.match(ROUTE);
   const key = match ? await getState<string>(tokenKey(match[1]!)) : undefined;
   if (!match || !key) return { status: 404, body: { error: "not found" } };
   const route = (match[2] ?? "setup") as keyof typeof METHODS;
   if (method.toUpperCase() !== METHODS[route]) return { status: 405, body: { error: `use ${METHODS[route]}` } };
   if (route === "setup") return { status: 200, html: setupPage(shortcutLink()) };
-  if (route === "pending") return { status: 200, body: { meals: await pendingMeals(key) } };
+  if (route === "status") return { status: 200, body: { synced_at: (await getState<string>(seenKey(key))) ?? null } };
+  if (route === "pending") {
+    const meals = await pendingMeals(key);
+    const newcomer = await markSynced(key);
+    // Telling them is a nicety; it must never get in the way of the sync itself.
+    if (newcomer) await Promise.resolve(hooks.onFirstSync?.(newcomer)).catch((err) => console.warn("first-sync notice failed:", err?.message ?? err));
+    return { status: 200, body: { meals } };
+  }
 
   let body: unknown;
   try {

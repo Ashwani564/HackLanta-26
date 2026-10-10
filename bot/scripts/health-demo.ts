@@ -11,17 +11,19 @@ import { startWeb } from "../src/web.js";
 
 const user = "+15550001234";
 const samples = [
-  { name: "Greek yogurt bowl", calories: 380, protein: 28, price: 6 },
-  { name: "Chicken over rice", calories: 750, protein: 45, price: 11 },
-  { name: "Iced latte", calories: 190, protein: 10, price: 5.5 },
-  { name: "Burrito bowl", calories: 820, protein: 48, price: 12 },
+  { name: "Greek yogurt bowl", calories: 380, protein: 28, carbs: 42, fat: 9, price: 6 },
+  { name: "Chicken over rice", calories: 750, protein: 45, carbs: 78, fat: 26, price: 11 },
+  { name: "Iced latte", calories: 190, protein: 10, carbs: 19, fat: 7, price: 5.5 },
+  // No carbs or fat on this one, like a meal nobody estimated them for: the shortcut must skip those two.
   { name: "Protein bar", calories: 210, protein: 20, price: 3 },
+  { name: "Burrito bowl", calories: 820, protein: 48, carbs: 88, fat: 28, price: 12 },
 ];
 let next = 0;
 const logNext = async () => {
   const meal = samples[next++ % samples.length]!;
   await logMeal(user, meal);
-  console.log(`logged: ${meal.name} (${meal.calories} cal, ${meal.protein}g protein)`);
+  const macros = meal.carbs === undefined ? "no carbs/fat" : `${meal.carbs}g carbs, ${meal.fat}g fat`;
+  console.log(`logged: ${meal.name} (${meal.calories} cal, ${meal.protein}g protein, ${macros})`);
 };
 
 await logNext();

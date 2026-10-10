@@ -101,6 +101,7 @@ bot (`src/health.ts`), authenticated by a per-person token in the path:
 
 ```
 GET  /health/<token>            the person's setup page (their sync link, opened in a browser)
+GET  /health/<token>/status     { synced_at }  when the phone last synced; the setup page polls this
 GET  /health/<token>/pending    meals logged in chat today that aren't in Health yet
 POST /health/<token>/ack        { ids }  mark those meals as written
 POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  numbers read from Health
@@ -128,6 +129,11 @@ Open the printed link in Safari on the phone: it's the setup page, with a Copy b
 5. After End Repeat, **Get Contents of URL**: URL is `Text` followed by `/ack`. Method POST, Request Body JSON, one
    Text field `ids` = the `Synced` variable.
 
+Each Log Health Sample must use the value from the step **directly above it**. Every one of them shows as
+"Dictionary Value" in the editor, so it is easy to pick the wrong one (the `id`, say) and log a wrong number: choose
+Select Variable and tap the bubble under the right step. The demo's sample meals carry carbs and fat so a mistake
+shows up in Health → Nutrition → Carbohydrates and Total Fat (42 g and 9 g for the first meal).
+
 Leave the Date on the Log Health Sample actions empty: the meal is stamped with the time the shortcut runs.
 `carbs` and `fat` are missing from a meal when nobody estimated them, which is why those two sit inside an If.
 
@@ -148,7 +154,8 @@ Press Enter in the demo afterwards: it prints what arrived. The reads only work 
 is why they come last; a failed read can't undo or repeat the meals already written.
 
 **Share it** so the bot can hand it out. In the shortcut's details (ⓘ) → Setup, add an Import Question on the Text
-action ("Paste the link I texted you"), then Share → Copy iCloud Link. Give that link to the bot:
+action ("Paste the link I texted you"), then Share → Copy iCloud Link. Keep the name `Pie Sync`: the setup page's
+buttons run it by name. Editing a shared shortcut does not change the old link; copy a new one. Give the link to the bot:
 
 ```bash
 HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # stored on the stack; later deploys keep it
@@ -157,11 +164,14 @@ HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # sto
 Locally, put `HEALTH_SHORTCUT_URL` and `PUBLIC_URL` (the address phones reach this machine on) in `.env`.
 
 **In chat**: "connect apple health" makes the bot text the person their private sync link (one-on-one chats only;
-in a group it asks them to message it directly). Opened in a browser, that link is a setup page with three steps:
-copy the link, add the shortcut, add the automation. The automation is what
-makes it hands-free, and each person adds it once, since automations can't be shared by link: Shortcuts →
-Automation → New → Message → Sender: the bot → Run Immediately → Pie Sync. From then on every text from the bot
-runs the sync, which is right after they logged something and while the phone is unlocked.
+in a group it asks them to message it directly). Opened in a browser, that link is a setup page:
+
+1. **Add the shortcut**: one tap copies their link and opens the prebuilt shortcut; they paste when Shortcuts asks.
+2. **Test it**: runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
+   The bot also texts them once to say it worked. The button then becomes **Sync now**.
+3. **Make it automatic** (optional): Shortcuts → Automation → New → Message → Sender: the bot → Run Immediately →
+   Pie Sync. Automations can't be shared by link, so each person adds this once. From then on every text from the
+   bot runs the sync, which is right after they logged something and while the phone is unlocked.
 
 **What the bot does with the numbers** (one-on-one chats only, never in a group): half of the day's active calories,
 up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or

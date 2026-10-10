@@ -13,7 +13,8 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createHandler } from "./handler.js";
-import { handleHealthRequest, healthReply, isHealthPath } from "./health.js";
+import { sendDm } from "./dm.js";
+import { CONNECTED_TEXT, handleHealthRequest, healthReply, isHealthPath } from "./health.js";
 import { loadSecrets } from "./secrets.js";
 import { claimOnce } from "./store.js";
 
@@ -49,6 +50,11 @@ export const handler = async (event: any, context: { functionName: string }) => 
     const jpeg = await meetupJpeg({ meal: "dinner", place: "Stir House Atlanta", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash", walkMin: 6 }, { name: "princy", walkMin: 4 }, { name: "ashar" }], note: "font check" });
     return { fontconfig: useBundledFonts() ?? "NOT FOUND", bytes: jpeg.length, jpegBase64: jpeg.toString("base64") };
   }
+  // Someone's phone just synced with Apple Health for the first time (see the health routes below): tell them it worked.
+  if (event?.kind === "health-connected") {
+    await sendDm((await getBot()).app, String(event.userId), CONNECTED_TEXT);
+    return { ok: true };
+  }
   // Every minute (EventBridge): move "schedule dinner with…" plans along.
   if (event?.kind === "tick") {
     await loadSecrets();
@@ -61,7 +67,13 @@ export const handler = async (event: any, context: { functionName: string }) => 
   // Apple Health sync from the phone's shortcut. Authenticated by the token in the path, not a Photon signature.
   if (isHealthPath(event?.rawPath ?? "")) {
     const text = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
-    const out = healthReply(await handleHealthRequest(event.requestContext?.http?.method ?? "GET", event.rawPath, text));
+    const out = healthReply(
+      await handleHealthRequest(event.requestContext?.http?.method ?? "GET", event.rawPath, text, {
+        // Texting them happens in an async run, so the phone's request isn't held up while Photon connects.
+        onFirstSync: (userId) =>
+          lambda.send(new InvokeCommand({ FunctionName: context.functionName, InvocationType: "Event", Payload: Buffer.from(JSON.stringify({ kind: "health-connected", userId })) })),
+      }),
+    );
     return { statusCode: out.status, headers: out.headers, body: out.text };
   }
   const route = cardRoute(event);
