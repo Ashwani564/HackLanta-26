@@ -179,6 +179,15 @@ const TOOLS: Tool[] = [
   },
 ];
 
+/**
+ * A message that's plainly about wanting food always starts with the location check (which itself checks
+ * whether Find My is already shared, and only asks if it isn't). Left to the model, it sometimes just
+ * asks "where are you at?" in text instead, so the first step is forced in code.
+ */
+const WANTS_FOOD =
+  /\b(hungry|starving|famished|hangry|something to eat|place to eat|places to eat|where (should|can|do|to) (i|we|you) (eat|go)|where to eat|what (should|do) (i|we) eat|(wanna|want to|gotta|need to|let'?s|lets) eat|need (some )?food|need (a |some )?(lunch|dinner|breakfast)|grab (some )?(food|lunch|dinner|breakfast|something)|(lunch|dinner|breakfast) (spot|place|ideas?))\b/i;
+export const wantsFood = (text: string) => WANTS_FOOD.test(text);
+
 /** The model returns exactly this when a tool already sent everything the person needs to see. */
 export const NO_REPLY = "NO_REPLY";
 
@@ -227,6 +236,7 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
   const history = await loadHistory(spaceId);
   const turn: Message[] = [{ role: "user", content: [{ text }] }];
 
+  const forceLocation = wantsFood(text);
   for (let round = 0; ; round++) {
     const res = await client.send(
       new ConverseCommand({
@@ -234,7 +244,10 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
         system: [{ text: SYSTEM }],
         messages: [...history, ...turn],
         inferenceConfig: { maxTokens: 400, temperature: 0.7 },
-        toolConfig: { tools: TOOLS },
+        toolConfig: {
+          tools: TOOLS,
+          ...(round === 0 && forceLocation && { toolChoice: { tool: { name: "get_location" } } }),
+        },
       }),
     );
     const message = res.output?.message;

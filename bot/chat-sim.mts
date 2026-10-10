@@ -53,6 +53,7 @@ const scripts: Record<string, string[]> = {
   "polls-no": ["i could eat, what's around"],
   "polls-skip": ["im starving"],
   typed: ["hungry", "queen tea", "the beef rice", "yeah"],
+  friend: ["Need a place to eat with my friend", "hey"],
   allergy: ["im allergic to peanuts, need something to eat", "india eats", "something spicy"],
   far: ["what should i eat"],
   never: ["i need food"],

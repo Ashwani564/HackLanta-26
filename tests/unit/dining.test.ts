@@ -3,6 +3,7 @@ import test from "node:test";
 import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/explain.js";
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
+import { wantsFood } from "../../bot/src/llm.js";
 import { composeDishMessage, dishPoll, pickVaried, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
@@ -100,4 +101,13 @@ test("dish poll needs two choices", () => {
   const choices = [{ label: "Beef Rice ($14.99)", name: "Beef Rice", calories: 650, proteinG: 38 }, { label: "Nuggets ($10.39)", name: "Nuggets", calories: null, proteinG: null }];
   assert.equal(dishPoll("Queen Tea", choices)!.options[0]!.value, "Beef Rice");
   assert.equal(dishPoll("Queen Tea", choices.slice(0, 1)), undefined);
+});
+
+test("food requests are recognised, small talk and mid-flow answers are not", () => {
+  for (const yes of ["Need a place to eat with my friend", "im hungry", "yo i'm starving", "what should we eat", "where should i eat tonight", "wanna eat", "can you make a poll for where to eat", "need some food", "lunch spot?", "I sent you a voice note. Respond. Transcript: \"i'm hungry\""]) {
+    assert.ok(wantsFood(yes), `should match: ${yes}`);
+  }
+  for (const no of ["hey", "what's up", "queen tea", "the beef rice", "yeah", "thanks", "how many calories in a burrito", "i had pizza for lunch", "my goal is 1800 cal", "I'm allergic to peanuts"]) {
+    assert.ok(!wantsFood(no), `should not match: ${no}`);
+  }
 });
