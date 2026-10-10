@@ -338,6 +338,28 @@ export function dishPoll(restaurant: string, choices: readonly DishChoice[]): Po
 /** Asked in plain text after they pick a dish (no poll). The map link is only sent if they say yes. */
 export const askDirections = () => pick(["want directions?", "need directions over there?", "want me to send the walk there?"]);
 
+const askedKey = (spaceId: string) => `askdir#${spaceId}`;
+const ASKED_TTL = 30 * 60;
+
+/** Remember that the last thing we asked was "want directions?", so a bare "sure" is answered in code, not by the model. */
+export const markAskedDirections = (spaceId: string) => putState(askedKey(spaceId), true, ASKED_TTL);
+
+const YES = /^(yes|yeah|yea|yep|yup|ya|y|sure|ok|okay|k|please|pls|yes please|sure thing|go ahead|send it|do it|definitely|absolutely|of course|bet)\W*$/i;
+const NO = /^(no|nope|nah|n|no thanks|no thank you|nvm|never ?mind|i'?m good|all good|pass)\W*$/i;
+
+/** A plain yes/no to the directions question. Anything else is not an answer and falls through to the model. */
+export function directionsAnswer(text: string): "yes" | "no" | null {
+  const t = text.trim();
+  return YES.test(t) ? "yes" : NO.test(t) ? "no" : null;
+}
+
+/** If we just asked about directions, consume the flag and say whether this message answers it. One question, one answer. */
+export async function takeDirectionsAnswer(spaceId: string, text: string): Promise<"yes" | "no" | null> {
+  if (!(await getState<boolean>(askedKey(spaceId)))) return null;
+  await putState(askedKey(spaceId), null, 1);
+  return directionsAnswer(text);
+}
+
 /** They chose a dish: a short reaction with the numbers if we have them, then a plain-text offer of directions. */
 export async function chooseDish(spaceId: string, said: string): Promise<{ text?: string; error?: string }> {
   const saved = await getState<{ restaurant: string; choices: DishChoice[] }>(dishesKey(spaceId));
@@ -351,5 +373,6 @@ export async function chooseDish(spaceId: string, said: string): Promise<{ text?
       ? [`nice, the ${dish.name} runs ${facts}`, `good call, ${facts} on the ${dish.name}`, `the ${dish.name}, solid. ${facts}`]
       : [`nice pick, the ${dish.name}`, `good call on the ${dish.name}`, `the ${dish.name}, solid`],
   );
+  await markAskedDirections(spaceId);
   return { text: `${text}\n\n${askDirections()}` };
 }

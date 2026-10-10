@@ -5,7 +5,7 @@ import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
 import { isGroupChat, mentionsBot, shouldRespond } from "../../bot/src/addressing.js";
 import { replyText, wantsFood } from "../../bot/src/llm.js";
-import { composeDishMessage, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
+import { composeDishMessage, directionsAnswer, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
 const peanut: Constraints = { ...none, allergens: ["peanuts"] };
@@ -190,4 +190,10 @@ test("group chats: the bot answers only when addressed, and DMs always get an an
   assert.equal(await shouldRespond(g, "+2222", "text", "queen tea sounds good"), false);
   // Poll taps are left to the poll logic.
   assert.equal(await shouldRespond(g, "+2222", "poll_option"), true);
+});
+
+test("a bare yes or no after 'want directions?' is recognized; anything else is not an answer", () => {
+  for (const y of ["Sure", "sure ", "yeah!", "Yes please", "ok", "yep."]) assert.equal(directionsAnswer(y), "yes", y);
+  for (const n of ["no", "Nope", "no thanks", "nvm", "i'm good"]) assert.equal(directionsAnswer(n), "no", n);
+  for (const other of ["sure, but what about saxby's", "what else is there", "yes and cheaper", "not mexican"]) assert.equal(directionsAnswer(other), null, other);
 });

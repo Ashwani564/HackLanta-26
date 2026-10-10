@@ -8,7 +8,7 @@ import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
-  askDirections, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
+  askDirections, markAskedDirections, takeDirectionsAnswer, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
   mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantNamed, restaurantPoll, type Origin,
 } from "./dining.js";
 import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type PollRecord, type PollSpec } from "./polls.js";
@@ -70,7 +70,13 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     console.log(`  dishes: ${out.text.replace(/\n+/g, " | ")}`);
     queued = dishPoll(out.restaurant!, out.choices!);
     // Only one pick to choose from means no poll; go straight to the directions question (text).
-    if (!queued) await space.send(askDirections());
+    if (!queued) {
+      const ask = askDirections();
+      await space.send(ask);
+      await markAskedDirections(space.id);
+      // The model must see the question it was just answered "sure" to, or it re-runs the dish search.
+      return { sent: true, sent_text: `${out.text}\n\n${ask}` };
+    }
     return { sent: true, sent_text: out.text };
   };
 
@@ -226,6 +232,19 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await removeUser(message.sender.id);
           console.log(`  opted out ${message.sender.id}`);
           return;
+        }
+        // A bare "sure"/"no" right after "want directions?" is answered here; the model has misread it as a new search.
+        const answer = await takeDirectionsAnswer(space.id, text);
+        if (answer === "yes") {
+          const out = (await runTool("get_directions", {})) as { sent?: boolean; sent_text?: string; error?: string };
+          await remember(space.id, text, out.sent_text ?? "ok");
+          if (!out.sent) await space.send("hm, i don't have a spot picked yet. which one are you headed to?");
+          break;
+        }
+        if (answer === "no") {
+          await space.send("ok, just text me if you need anything");
+          await remember(space.id, text, "ok, just text me if you need anything");
+          break;
         }
         await respond(text);
         break;
