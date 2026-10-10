@@ -13,7 +13,7 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createHandler } from "./handler.js";
-import { handleHealthRequest, healthReply, isHealthPath, setPublicBase } from "./health.js";
+import { handleHealthRequest, healthReply, isHealthPath } from "./health.js";
 import { loadSecrets } from "./secrets.js";
 import { claimOnce } from "./store.js";
 
@@ -25,7 +25,7 @@ const lambda = new LambdaClient({ region: process.env.AWS_REGION ?? "us-east-2" 
 const MAX_HANDLER_MS = 290_000;
 
 // Reused across warm invocations.
-let bot: Promise<{ app: any; handle: (space: any, message: any) => Promise<void> }> | undefined;
+let bot: Promise<{ app: any; handle: (space: any, message: any) => Promise<void>; tick: () => Promise<void> }> | undefined;
 const getBot = () =>
   (bot ??= (async () => {
     await loadSecrets();
@@ -34,21 +34,38 @@ const getBot = () =>
       webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET,
       options: { logLevel: (process.env.LOG_LEVEL as "info" | "debug") ?? "info" },
     });
-    return { app, handle: createHandler(app).handle };
+    const handler = createHandler(app);
+    return { app, handle: handler.handle, tick: handler.tick };
   })());
+
+import { loadCard, rememberBaseUrl } from "./cards.js";
 
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
+  // `aws lambda invoke --payload '{"kind":"cardtest"}'`: renders a sample plan card inside Lambda, to check the fonts are found.
+  if (event?.kind === "cardtest") {
+    const { meetupJpeg, useBundledFonts } = await import("./meetup-card.js");
+    const jpeg = await meetupJpeg({ meal: "dinner", place: "Stir House Atlanta", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash", walkMin: 6 }, { name: "princy", walkMin: 4 }, { name: "ashar" }], note: "font check" });
+    return { fontconfig: useBundledFonts() ?? "NOT FOUND", bytes: jpeg.length, jpegBase64: jpeg.toString("base64") };
+  }
+  // Every minute (EventBridge): move "schedule dinner with…" plans along.
+  if (event?.kind === "tick") {
+    await loadSecrets();
+    await (await getBot()).tick();
+    return { ok: true };
+  }
 
+  // Function URL request.
+  await rememberBaseUrl(event?.requestContext?.domainName);
   // Apple Health sync from the phone's shortcut. Authenticated by the token in the path, not a Photon signature.
   if (isHealthPath(event?.rawPath ?? "")) {
     const text = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
     const out = healthReply(await handleHealthRequest(event.requestContext?.http?.method ?? "GET", event.rawPath, text));
     return { statusCode: out.status, headers: out.headers, body: out.text };
   }
-
-  // Function URL request from Photon.
+  const route = cardRoute(event);
+  if (route) return serveCard(route);
   if (event?.requestContext?.http?.method !== "POST") return { statusCode: 200, body: "dining-agent webhook" };
   const body = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8");
   const headers: Headers = event.headers ?? {};
@@ -81,8 +98,6 @@ function verify(body: Buffer, headers: Headers): "ok" | "missing headers" | "sta
 
 async function processDelivery({ body, headers }: Delivery) {
   const { app, handle } = await getBot();
-  // Photon reached us on the Function URL, so that host is where phones can reach the sync routes too.
-  if (headers.host) setPublicBase(`https://${headers.host}`);
   let started!: () => void, finished!: () => void;
   const didStart = new Promise<void>((r) => (started = r));
   const didFinish = new Promise<void>((r) => (finished = r));
@@ -126,4 +141,22 @@ async function selfTest(audioBase64?: string) {
   const { audio, duration } = await speak("Try the beef rice at Queen Tea. It's about six hundred fifty calories.");
   const transcript = await transcribe(await toWav(audio));
   return { ok: !!transcript, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
+}
+
+// ---------- plan card pages: GET /card/<token> (the page) and /card/<token>.jpg (its picture) ----------
+
+function cardRoute(event: any): { token: string; jpg: boolean; base: string } | undefined {
+  if (event?.requestContext?.http?.method !== "GET") return undefined;
+  const m = /^\/card\/([A-Za-z0-9_-]{8,40})(\.jpg)?$/.exec(event.rawPath ?? "");
+  return m ? { token: m[1]!, jpg: !!m[2], base: `https://${event.requestContext.domainName}` } : undefined;
+}
+
+async function serveCard(r: { token: string; jpg: boolean; base: string }) {
+  const card = await loadCard(r.token);
+  if (!card) return { statusCode: 404, headers: { "content-type": "text/plain" }, body: "this plan card has expired" };
+  const { cardPageHtml, meetupJpeg } = await import("./meetup-card.js");
+  const cache = { "cache-control": "public, max-age=300" };
+  if (r.jpg) return { statusCode: 200, isBase64Encoded: true, headers: { "content-type": "image/jpeg", ...cache }, body: (await meetupJpeg(card)).toString("base64") };
+  const page = `${r.base}/card/${r.token}`;
+  return { statusCode: 200, headers: { "content-type": "text/html; charset=utf-8", ...cache }, body: cardPageHtml(card, `${page}.jpg`, page) };
 }

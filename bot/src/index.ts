@@ -23,7 +23,9 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-const { handle } = createHandler(app);
+const { handle, tick } = createHandler(app);
+// Same job EventBridge does on AWS: move "schedule dinner with…" plans along.
+setInterval(() => void tick().catch((err) => console.warn("plan check failed:", err?.message ?? err)), 30_000);
 startWeb();
 console.log(`dining-agent listening (${mode})`);
 

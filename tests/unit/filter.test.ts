@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadCatalog } from "../../src/data/catalog.js";
 import { dietAcceptableTags, filterDishes, hardFilterReason } from "../../src/pipeline/filter.js";
-import { CANONICAL_ALLERGENS, normalizeAllergies } from "../../src/pipeline/allergens.js";
+import { CANONICAL_ALLERGENS, isRealAllergen, meatAvoidance, normalizeAllergies } from "../../src/pipeline/allergens.js";
+import { buildConstraints, type ParsedMessage } from "../../src/pipeline/parse.js";
 import type { Constraints, Dish } from "../../src/types.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
@@ -71,7 +72,15 @@ test("diet is presence-required; vegetarian accepts vegan; unknown diets match n
   assert.equal(hardFilterReason(dish({ dietTags: ["vegan"] }), { ...none, diets: ["vegetarian"] }), null);
   assert.equal(hardFilterReason(dish({ dietTags: ["vegetarian"] }), { ...none, diets: ["vegan"] }), "diet");
   assert.equal(hardFilterReason(dish({ dietTags: [] }), { ...none, diets: ["vegan"] }), "diet");
-  assert.equal(filterDishes(catalog, { ...none, diets: ["halal"] }).kept.length, 0, "no halal data, so no halal results");
+  // Halal exists only as an inference for Starbucks and Saxby's meat-free items (data/enrich_gaps.py). Anything else
+  // has no halal tag and must never come back, and a halal result must never be a meat dish.
+  const halal = filterDishes(catalog, { ...none, diets: ["halal"] }).kept;
+  assert.ok(halal.length > 0);
+  for (const d of halal) {
+    assert.ok(["starbucks", "saxbys"].includes(d.restaurantId), `${d.dishId} is halal only by inference at the two chains`);
+    assert.equal(d.dietSource, "inferred", d.dishId);
+    assert.ok(d.dietTags.includes("vegetarian") || d.dietTags.includes("vegan"), `${d.dishId}: halal-tagged dishes are meat-free`);
+  }
 });
 
 test("budget excludes over-budget and unknown-price dishes", () => {
@@ -95,7 +104,7 @@ test("catalog: for every canonical allergen, no kept dish lists it and every kep
     const { kept } = filterDishes(catalog, { ...none, allergens: [allergen] });
     assert.ok(kept.length > 0, `${allergen}: expected some safe dishes`);
     for (const d of kept) {
-      assert.ok(d.allergensKnown, `${allergen}: ${d.dishId} has unknown allergens`);
+      if (isRealAllergen(allergen)) assert.ok(d.allergensKnown, `${allergen}: ${d.dishId} has unknown allergens`);
       assert.ok(!d.allergens.includes(allergen), `${allergen} leaked: ${d.dishId} lists ${d.allergens.join(",")}`);
     }
   }
@@ -120,6 +129,8 @@ const OBVIOUS_WORDS: Record<string, RegExp> = {
   shellfish: /shrimp|prawn|crab|lobster|crawfish/i,
   fish: /\bfish\b|salmon|tuna|tilapia|anchov/i,
   sesame: /sesame|tahini/i,
+  beef: /beef|steak|burger|brisket|meatball/i,
+  pork: /pork|bacon|sausage|pepperoni|prosciutto|chorizo|carnitas/i,
 };
 const GF = /gluten[- ]free/i;
 
@@ -164,4 +175,37 @@ test("catalog: a dairy allergy never returns a dish whose allergen list is blank
   assert.ok(blank.size > 0, "fixture sanity: the catalog has blank-allergen dishes");
   const { kept } = filterDishes(catalog, { ...none, allergens: ["milk"] });
   for (const d of kept) assert.ok(!blank.has(d.dishId), `${d.dishId} has a blank allergen field`);
+});
+
+// ---- beef and pork: diet avoidances found from dish text ----
+
+test("avoiding pork or beef drops dishes that name it, even when the allergen cell is blank", () => {
+  const bacon = dish({ dishName: "Bacon, Gouda & Egg Sandwich", allergens: [], allergensKnown: false });
+  assert.equal(hardFilterReason(bacon, { ...none, allergens: ["pork"] }), "allergen_text");
+  assert.equal(hardFilterReason(dish({ dishName: "Double Cheeseburger" }), { ...none, allergens: ["beef"] }), "allergen_text");
+  // not an allergy: a plain drink with a blank allergen cell is still fine for someone avoiding pork
+  assert.equal(hardFilterReason(dish({ dishName: "Cold Brew", allergens: [], allergensKnown: false }), { ...none, allergens: ["pork"] }), null);
+  // but a real allergy alongside it still excludes unknown dishes
+  assert.equal(hardFilterReason(dish({ dishName: "Cold Brew", allergens: [], allergensKnown: false }), { ...none, allergens: ["pork", "milk"] }), "allergen_unknown");
+});
+
+test("no pork / pork-free / no_beef / red meat as a diet become avoidances, not required tags", () => {
+  assert.deepEqual(meatAvoidance("No Pork"), ["pork"]);
+  assert.deepEqual(meatAvoidance("pork-free"), ["pork"]);
+  assert.deepEqual(meatAvoidance("no_beef"), ["beef"]);
+  assert.deepEqual(meatAvoidance("red meat"), ["beef", "pork"]);
+  assert.equal(meatAvoidance("vegan"), null);
+  const parsed: ParsedMessage = { intent: "food_request", positiveQuery: "", allergies: [], diets: ["no_pork", "halal"], exclude: [] };
+  const c = buildConstraints({ allergies: [], diets: ["No beef"] }, parsed);
+  assert.deepEqual(c.allergens, ["beef", "pork"]);
+  assert.deepEqual(c.diets, ["halal"]);
+  assert.deepEqual(normalizeAllergies(["no pork", "fish", "nuts"]).allergens, ["fish", "peanuts", "pork", "tree_nuts"]);
+});
+
+test("catalog: avoiding beef and pork leaves dishes that name neither", () => {
+  for (const meat of ["beef", "pork"]) {
+    const { kept } = filterDishes(catalog, { ...none, allergens: [meat] });
+    assert.ok(kept.length > 100, `${meat}: expected plenty of meat-free dishes`);
+    for (const d of kept) assert.ok(!OBVIOUS_WORDS[meat]!.test(`${d.dishName} ${d.description}`), `${meat} leaked: ${d.dishId}`);
+  }
 });

@@ -1,5 +1,5 @@
 import type { Constraints, Dish } from "../types.js";
-import { GLUTEN_FREE_CLAIM, keywordPatterns, termsPattern } from "./allergens.js";
+import { GLUTEN_FREE_CLAIM, hasRealAllergy, keywordPatterns, termsPattern } from "./allergens.js";
 
 /**
  * Hard filters. Pure functions. The LLM never decides what is safe.
@@ -43,8 +43,9 @@ export function mentionsActiveAllergen(dish: Pick<Dish, "dishName" | "descriptio
 export function hardFilterReason(dish: Dish, c: Constraints): DropReason | null {
   const hasAllergy = c.allergens.length > 0 || c.unmappedAllergyTerms.length > 0;
   if (hasAllergy) {
-    // Blank allergens field means unknown. Unknown is excluded for anyone with an allergy.
-    if (!dish.allergensKnown) return "allergen_unknown";
+    // Blank allergens field means unknown. Unknown is excluded for anyone with a real allergy. Beef and pork are
+    // found from the dish text alone, so avoiding them does not need the allergen cell to be known.
+    if (hasRealAllergy(c) && !dish.allergensKnown) return "allergen_unknown";
     if (dish.allergens.some((a) => c.allergens.includes(a))) return "allergen";
     if (mentionsActiveAllergen(dish, c.allergens)) return "allergen_text";
     const pattern = termsPattern(c.unmappedAllergyTerms, "js");

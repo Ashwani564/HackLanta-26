@@ -50,7 +50,12 @@ test("catalog loads 825 dishes from 9 restaurants and treats blank allergens as 
   const dishes = loadCatalog("data/gsu_dishes.csv");
   assert.equal(dishes.length, 825);
   assert.equal(new Set(dishes.map((d) => d.restaurantId)).size, 9);
-  for (const d of dishes) assert.equal(d.allergensKnown, d.allergens.length > 0, d.dishId);
+  for (const d of dishes) {
+    // A listed allergen means the cell was filled. The only known-but-empty rows are the ones marked "none",
+    // which data/enrich_gaps.py writes together with allergen_source=inferred (never as a stated "none").
+    if (d.allergens.length > 0) assert.ok(d.allergensKnown, d.dishId);
+    if (d.allergensKnown && d.allergens.length === 0) assert.equal(d.allergenSource, "inferred", d.dishId);
+  }
 });
 
 test("catalog rejects duplicate IDs and missing columns", () => {

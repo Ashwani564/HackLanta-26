@@ -4,6 +4,7 @@
 // so it is never logged.
 import { randomBytes } from "node:crypto";
 import type { Goal } from "../../src/pipeline/parse.js";
+import { baseUrl } from "./cards.js";
 import { getDayByKey, keyFor, today, totals, type Day, type Goals } from "./day.js";
 import { getState, putState } from "./store.js";
 
@@ -32,8 +33,8 @@ export async function syncTokenFor(userId: string): Promise<string> {
   return token;
 }
 
-// Where the phone reaches us. Set PUBLIC_URL locally; Lambda has no way to know its own Function URL up
-// front, so it learns it from the first webhook that arrives (lambda.ts).
+// Where the phone reaches us. Set PUBLIC_URL locally; on Lambda the Function URL is learned from incoming
+// requests and kept in the state table (cards.ts), since the function can't know its own URL up front.
 let publicBase = process.env.PUBLIC_URL?.replace(/\/+$/, "");
 export const setPublicBase = (url: string) => {
   publicBase ??= url.replace(/\/+$/, "");
@@ -68,9 +69,10 @@ export async function connectHealth(userId: string, inGroup: boolean): Promise<{
     const text = "dm me and i'll set that up, the link is just for you";
     return { text, said: text };
   }
-  if (!shortcutLink() || !publicBase) return { error: "apple health sync isn't set up on this bot yet" };
+  const base = publicBase ?? (await baseUrl());
+  if (!shortcutLink() || !base) return { error: "apple health sync isn't set up on this bot yet" };
   return {
-    text: connectText(`${publicBase}/health/${await syncTokenFor(userId)}`),
+    text: connectText(`${base}/health/${await syncTokenFor(userId)}`),
     said: "(sent the apple health setup steps and their private sync link)",
   };
 }

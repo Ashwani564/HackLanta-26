@@ -4,8 +4,8 @@ import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/exp
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
 import { isGroupChat, mentionsBot, shouldRespond } from "../../bot/src/addressing.js";
-import { replyText, wantsFood } from "../../bot/src/llm.js";
-import { composeDishMessage, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
+import { planFollowup, replyText, wantsFood, wantsPlan } from "../../bot/src/llm.js";
+import { composeDishMessage, directionsAnswer, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
 const peanut: Constraints = { ...none, allergens: ["peanuts"] };
@@ -190,4 +190,41 @@ test("group chats: the bot answers only when addressed, and DMs always get an an
   assert.equal(await shouldRespond(g, "+2222", "text", "queen tea sounds good"), false);
   // Poll taps are left to the poll logic.
   assert.equal(await shouldRespond(g, "+2222", "poll_option"), true);
+});
+
+test("a bare yes or no after 'want directions?' is recognized; anything else is not an answer", () => {
+  for (const y of ["Sure", "sure ", "yeah!", "Yes please", "ok", "yep."]) assert.equal(directionsAnswer(y), "yes", y);
+  for (const n of ["no", "Nope", "no thanks", "nvm", "i'm good"]) assert.equal(directionsAnswer(n), "no", n);
+  for (const other of ["sure, but what about saxby's", "what else is there", "yes and cheaper", "not mexican"]) assert.equal(directionsAnswer(other), null, other);
+});
+
+test("wantsPlan catches a meal with named people, not a plain food ask", () => {
+  for (const yes of [
+    "schedule dinner today with ashwani and princy",
+    "I’m  gonna grab dinner with Ashwani and princy can you figure out the time and place ",
+    "figure out dinner with my friends",
+    "want to get lunch with sam, can you set it up",
+  ]) assert.ok(wantsPlan(yes), `should match: ${yes}`);
+  for (const no of ["I'm hungry", "grab dinner", "Looking to grab lunch ", "need something vegan"]) assert.ok(!wantsPlan(no), `should not match: ${no}`);
+});
+
+test("planFollowup only fires right after a plan request", () => {
+  const plan = "grab dinner with ashwani and princy, figure out the time and place";
+  assert.ok(planFollowup("Can you text them and see ", plan));
+  assert.ok(!planFollowup("Can you text them and see ", "I'm hungry"));
+  assert.ok(!planFollowup("Can you text them and see ", undefined));
+});
+
+test("replyText collapses a phrase the model repeated with no space, but leaves ordinary text alone", () => {
+  assert.equal(replyText(["yo what's up, you hungry or somethingyou hungry or something"]), "yo what's up, you hungry or something");
+  assert.equal(replyText(["nah bro you never told me, what is itbro you never told me, what is it"]), "nah bro you never told me, what is it");
+  assert.equal(replyText(["get the falafel pocket. it's packed with hummus and roasted peppers"]), "get the falafel pocket. it's packed with hummus and roasted peppers");
+  assert.equal(replyText(["first thing", "second thing"]), "first thing\n\nsecond thing");
+});
+
+test("wantsPlan also catches an invite to eat with named people", () => {
+  for (const yes of ["Wanna go grab lunch with Ash and Princy", "wanna grab dinner with ashar", "lets get lunch w/ princy and ash", "can we do dinner with Ash tonight", "should we grab food with princy"]) {
+    assert.ok(wantsPlan(yes), `should match: ${yes}`);
+  }
+  for (const no of ["wanna grab lunch", "I'm hungry", "let's get lunch", "I want a burger with fries", "grab a bite"]) assert.ok(!wantsPlan(no), `should not match: ${no}`);
 });

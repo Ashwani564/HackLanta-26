@@ -67,7 +67,11 @@ const WORDS: Record<string, RegExp> = {
   shellfish: /shrimp|prawn|crab|lobster|crawfish|scallop|squid|calamari|\bclams?\b|mussel/i,
   fish: /\bfish\b|salmon|tuna|tilapia|anchov|sardine/i,
   sesame: /sesame|tahini/i,
+  beef: /beef|steak|burger|brisket|meatball/i,
+  pork: /pork|bacon|sausage|pepperoni|prosciutto|chorizo|carnitas|\bham\b/i,
 };
+// Beef and pork are food avoidances found from text, not allergens: a blank allergen cell is not a leak for them.
+const MEATS = ["beef", "pork"];
 
 let leaks = 0;
 let problems = 0;
@@ -104,7 +108,7 @@ for (const c of selected) {
       if (!row) return issues.push(`${where}: unknown dish_id ${id}`);
       const text = `${row.name} ${row.description}`;
       const everyone = new Set([...c.mustAvoid, ...constraints.allergens]);
-      const hasRestriction = everyone.size > 0 || (c.mustAvoidText?.length ?? 0) > 0 || constraints.unmappedAllergyTerms.length > 0;
+      const hasRestriction = [...everyone].some((a) => !MEATS.includes(a)) || (c.mustAvoidText?.length ?? 0) > 0 || constraints.unmappedAllergyTerms.length > 0;
       if (hasRestriction && row.allergenCell === "") issues.push(`LEAK ${where}: ${id} has a blank allergen field`);
       for (const a of everyone) {
         if (row.allergens.includes(a)) issues.push(`LEAK ${where}: ${id} lists ${a}`);

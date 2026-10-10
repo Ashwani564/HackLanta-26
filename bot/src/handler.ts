@@ -9,7 +9,7 @@ import { sendDayCard } from "./card.js";
 import { connectHealth, dayGoals, getMetrics, healthSummary } from "./health.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
-  askDirections, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
+  askDirections, markAskedDirections, takeDirectionsAnswer, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
   mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantNamed, restaurantPoll, type Origin,
 } from "./dining.js";
 import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type PollRecord, type PollSpec } from "./polls.js";
@@ -17,6 +17,9 @@ import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./inv
 import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
+import { getUser } from "./users.js";
+import { sendDm, sendDmCard, sendDmImage } from "./dm.js";
+import { type PlanDeps, handleReply as handlePlanReply, isPlanPollTitle, onPlanVote, planNoteFor, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOC_TTL = 45 * 60;
@@ -25,10 +28,12 @@ const WAIT_MS = 150_000;
 const CHAIN_MS = Number(process.env.POLL_CHAIN_MS ?? 270_000);
 
 /** Build the per-message handler. `app` is the Spectrum instance (needed to open DMs for invites). */
-export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi } = {}) {
+export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi; plans?: PlanDeps } = {}) {
   const locate = deps.locate ?? realLocate;
   const pollApi = deps.polls ?? realPolls;
-  return { handle, invite };
+  const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage, sendDmCard);
+  // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
+  return { handle, invite, tick: () => tickPlans(planDeps) };
 
   async function handle(space: any, message: any) {
   // Read receipts and typing signals are noise for now.
@@ -46,10 +51,23 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const body = text !== undefined ? ` "${text}"` : "";
   console.log(`[${message.platform}] ${space.id} ${from}: ${message.content.type}${body}`);
 
+  // Who is texting, from the saved profiles. One-on-one chats only: nothing from a profile goes into a group.
+  const profile = !isGroupChat(space.id) ? await getUser(message.sender?.id) : undefined;
+  if (profile) console.log(`  known user: ${profile.name}`);
+  const restrict = (args: { allergies?: unknown; diets?: unknown }) =>
+    mergeRestrictions(space.id, args, profile && { allergies: profile.allergies, diets: profile.diets });
+  // The lower of their saved budget and anything they just said.
+  const budgetFor = (said: unknown) => {
+    const asked = typeof said === "number" && said > 0 ? said : undefined;
+    return [asked, profile?.budgetMaxUsd].filter((b): b is number => b !== undefined).reduce<number | undefined>((m, b) => (m === undefined ? b : Math.min(m, b)), undefined);
+  };
+
   // The next choice to offer as a poll. Sent after the reply text so the order reads naturally.
   let queued: PollSpec | undefined;
   // What the person just said (a transcript for voice notes). Used to read a restaurant name straight from their words.
   let currentText = "";
+  // A meal plan started this turn: after replying, keep it moving quickly for a few minutes.
+  let watching: string | undefined;
 
   // A blank line in a reply means "send as a separate text", paced like someone typing.
   const sendBubbles = async (sp: any, text: string) => {
@@ -62,19 +80,28 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
 
   /** The dish step: sends the two picks, then queues the "which one?" poll (or straight to directions). */
   const offerDishes = async (args: { restaurant: string; request?: string; allergies?: unknown; diets?: unknown; budget_usd?: unknown }) => {
-    const restrictions = await mergeRestrictions(space.id, args);
+    const restrictions = await restrict(args);
     const origin = (await getState<Origin>(`loc#${space.id}`)) ?? undefined;
-    const budget = typeof args.budget_usd === "number" ? args.budget_usd : undefined;
+    const budget = budgetFor(args.budget_usd);
     // One-on-one, how their day is going nudges the ranking (lighter, or more protein). Never a filter, never in a group.
     const mine = !isGroupChat(space.id) && message.sender ? await getDay(message.sender.id) : undefined;
     const goals = mine ? dayGoals(mine, await getMetrics(mine.key)) : [];
     const out = await restaurantDishes(space.id, { ...args, goals }, constraintsFor(restrictions, budget), origin);
+    if (out.repeat) {
+      return { already_sent: true, note: "you sent these dishes a moment ago and the poll is still up. don't send them again: nudge them to tap one (or type which they want), or reply NO_REPLY" };
+    }
     if (!out.text) return { error: out.error ?? "couldn't find that one", options: out.options };
     await sendBubbles(space, out.text);
     console.log(`  dishes: ${out.text.replace(/\n+/g, " | ")}`);
     queued = dishPoll(out.restaurant!, out.choices!);
     // Only one pick to choose from means no poll; go straight to the directions question (text).
-    if (!queued) await space.send(askDirections());
+    if (!queued) {
+      const ask = askDirections();
+      await space.send(ask);
+      await markAskedDirections(space.id);
+      // The model must see the question it was just answered "sure" to, or it re-runs the dish search.
+      return { sent: true, sent_text: `${out.text}\n\n${ask}` };
+    }
     return { sent: true, sent_text: out.text };
   };
 
@@ -176,8 +203,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         await putState(`loc#${space.id}`, origin, LOC_TTL);
         // Coordinates stay server-side; the model only gets the human-readable place and the nearby spots.
         const { latitude: _lat, longitude: _lng, ...forModel } = loc;
-        const restrictions = await mergeRestrictions(space.id, args);
-        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, args.budget_usd));
+        const restrictions = await restrict(args);
+        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, budgetFor(args.budget_usd)));
         console.log(`  at: ${loc.place ?? "?"} | nearby: ${near.restaurants.map((r) => `${r.name} ${r.walk_minutes}min`).join(", ") || "none"}${near.far_away ? " (far away)" : ""}`);
         // The spots go out as a poll right after the model's text; the model shouldn't list them itself.
         queued = restaurantPoll(near);
@@ -186,8 +213,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "nearby_restaurants": {
         const origin = await getState<Origin>(`loc#${space.id}`);
         if (!origin) return { error: "no location yet. call get_location first" };
-        const restrictions = await mergeRestrictions(space.id, args);
-        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, args.budget_usd));
+        const restrictions = await restrict(args);
+        const near = await nearbyRestaurants(space.id, origin, constraintsFor(restrictions, budgetFor(args.budget_usd)));
         console.log(`  nearby: ${near.restaurants.map((r) => `${r.name} ${r.walk_minutes}min`).join(", ") || "none"}${near.far_away ? " (far away)" : ""}`);
         queued = restaurantPoll(near);
         return { ...near, poll_will_be_sent: !!queued };
@@ -200,6 +227,13 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         if (!out.text) return { error: out.error ?? "couldn't match that dish" };
         await sendBubbles(space, out.text);
         return { sent: true, sent_text: out.text };
+      }
+      case "plan_meal": {
+        if (message.platform !== "imessage" || !message.sender) return { error: "planning only works over iMessage" };
+        const out = await startPlan(planDeps, { phone: message.sender.id, chatGuid: space.id }, args);
+        // When the organizer is being asked for a time there is nothing to watch yet; their answer starts the plan.
+        if ("planId" in out && !("asking_time" in out)) watching = out.planId;
+        return out;
       }
       case "get_directions": {
         const dir = await directionsLink(space.id);
@@ -214,7 +248,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const respond = async (text: string) => {
     currentText = text;
     await space.responding(async () => {
-      const reply = await chat(space.id, text, runTool);
+      const note = message.sender && !isGroupChat(space.id) ? await planNoteFor(message.sender.id) : undefined;
+      const reply = await chat(space.id, text, runTool, profile && { name: profile.name }, note);
       console.log(`  -> ${reply}`);
       if (reply !== NO_REPLY) await sendBubbles(space, reply);
     });
@@ -222,6 +257,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     const next = queued;
     queued = undefined;
     await runPolls(next);
+    if (watching) await watchPlan(planDeps, watching, Number(process.env.PLAN_WATCH_MS ?? 200_000));
   };
 
   try {
@@ -241,6 +277,21 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await removeUser(message.sender.id);
           console.log(`  opted out ${message.sender.id}`);
           return;
+        }
+        // Someone being asked about a meal plan may answer by typing instead of tapping.
+        if (message.platform === "imessage" && message.sender && !isGroupChat(space.id) && (await handlePlanReply(planDeps, message.sender.id, text))) return;
+        // A bare "sure"/"no" right after "want directions?" is answered here; the model has misread it as a new search.
+        const answer = await takeDirectionsAnswer(space.id, text);
+        if (answer === "yes") {
+          const out = (await runTool("get_directions", {})) as { sent?: boolean; sent_text?: string; error?: string };
+          await remember(space.id, text, out.sent_text ?? "ok");
+          if (!out.sent) await space.send("hm, i don't have a spot picked yet. which one are you headed to?");
+          break;
+        }
+        if (answer === "no") {
+          await space.send("ok, just text me if you need anything");
+          await remember(space.id, text, "ok, just text me if you need anything");
+          break;
         }
         await respond(text);
         break;
@@ -300,12 +351,21 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         const c = message.content;
         console.log(`  vote ${c.selected ? "+" : "-"} "${c.option?.title ?? c.title}" on "${c.poll?.title ?? "?"}"`);
         if (!c.selected) return;
+        // A tap on one of the meal plan's polls: move the plan along now (a few seconds once the tap settles).
+        if (!isGroupChat(space.id) && isPlanPollTitle(c.poll?.title ?? c.title)) {
+          console.log("  vote is on a meal-plan poll; moving the plan along");
+          if (await onPlanVote(planDeps, space.id.replace(/^any;-;/, ""))) return;
+        }
         const guid = await getState<string>(latestPollKey(space.id));
         const rec = guid ? await getState<PollRecord>(pollKey(guid)) : undefined;
         const label = c.option?.title ?? c.title;
         const value = rec?.options.find((o) => o.label === label)?.value;
         if (!rec || value === undefined) {
           console.log("  vote isn't on a poll we're waiting on; ignoring");
+          return;
+        }
+        if (rec.plan) {
+          console.log("  vote is on a meal-plan poll with no live plan; ignoring");
           return;
         }
         if (!(await claimOnce(`voted#${rec.guid}`))) return;

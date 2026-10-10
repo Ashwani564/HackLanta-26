@@ -44,6 +44,21 @@ Resources:
         - { AttributeName: pk, KeyType: HASH }
       TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
 
+  # One item per person, keyed by E.164 phone. Holds name and the restrictions the group-chat merge uses
+  # (allergies, diet, goal, budget). Health fields stay private: replies only ever use the merged constraints.
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: phone, AttributeType: S }
+      KeySchema:
+        - { AttributeName: phone, KeyType: HASH }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+
   BotRole:
     Type: AWS::IAM::Role
     Properties:
@@ -78,8 +93,12 @@ Resources:
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${PhotonSecretName}-*
               - Sid: State
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem]
                 Resource: !GetAtt StateTable.Arn
+              - Sid: Users
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Scan]
+                Resource: !GetAtt UsersTable.Arn
               - Sid: Speech
                 Effect: Allow
                 Action: [polly:SynthesizeSpeech, transcribe:StartStreamTranscription]
@@ -114,11 +133,31 @@ Resources:
           DB_SECRET_ARN: !Ref DbSecretArn
           DB_NAME: dining
           STATE_TABLE: !Ref StateTable
+          USERS_TABLE: !Ref UsersTable
           PHOTON_SECRET_ID: !Ref PhotonSecretName
           BOT_TIMEZONE: America/New_York
           HEALTH_SHORTCUT_URL: !Ref HealthShortcutUrl
           POLL_CHAIN_MS: "240000"
           NODE_OPTIONS: --enable-source-maps
+
+  # Every minute: read poll answers and move "schedule dinner with..." plans forward (bot/src/plans.ts).
+  PlanTickRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: plan-tick
+          Arn: !GetAtt BotFunction.Arn
+          Input: '{"kind":"tick"}'
+
+  PlanTickPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BotFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PlanTickRule.Arn
 
   # The webhook hands each delivery to an async self-invocation. A retry would re-run a flow that is
   # already waiting on a tap, so retries are off (deliveries are also deduped on message id).
@@ -160,3 +199,5 @@ Outputs:
     Value: !Ref BotFunction
   StateTableName:
     Value: !Ref StateTable
+  UsersTableName:
+    Value: !Ref UsersTable

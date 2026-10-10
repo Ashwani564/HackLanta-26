@@ -1,7 +1,7 @@
 // The "what should I eat" flow: nearby restaurants -> two dishes at the one they pick.
 // Allergen and diet filtering all happens in the backend code (src/rag, src/pipeline); the model
 // only chooses among dishes that already passed, and this file writes the final dish message.
-import { allergenConfidence } from "../../src/pipeline/allergens.js";
+import { allergenConfidence, hasRealAllergy } from "../../src/pipeline/allergens.js";
 import { haversineKm } from "../../src/pipeline/filter.js";
 import { pickDishes, type Pick } from "../../src/pipeline/explain.js";
 import { appleMapsUrl } from "../../src/pipeline/format.js";
@@ -10,8 +10,10 @@ import { rankDishes } from "../../src/pipeline/score.js";
 import { retrieve } from "../../src/rag/retrieve.js";
 import { listRestaurants, type RestaurantSummary } from "../../src/rag/store.js";
 import type { Constraints } from "../../src/types.js";
+import { mealAt, servesMeal } from "../../src/data/cuisines.js";
 import type { PollSpec } from "./polls.js";
 import { getState, putState } from "./store.js";
+import { TIME_ZONE } from "./day.js";
 
 export type Origin = { lat: number; lng: number };
 const WALK_KM_PER_MIN = 0.08; // ~4.8 km/h, same as the backend's walking estimate
@@ -49,17 +51,36 @@ const norm = (xs: unknown): string[] =>
  * Merge what the model just passed with everything this chat has ever said. An allergy mentioned ten
  * messages ago must still apply, even after the chat history has scrolled past it.
  */
-export async function mergeRestrictions(spaceId: string, args: { allergies?: unknown; diets?: unknown }): Promise<Restrictions> {
+export async function mergeRestrictions(
+  spaceId: string,
+  args: { allergies?: unknown; diets?: unknown },
+  /** The saved profile of the person in a one-on-one chat. Applied on every call and never stored with the chat, so /reset can't drop it. */
+  profile?: Restrictions,
+): Promise<Restrictions> {
   const stored = (await getState<Restrictions>(profileKey(spaceId))) ?? { allergies: [], diets: [] };
-  const merged = {
+  const fromChat = {
     allergies: [...new Set([...stored.allergies, ...norm(args.allergies)])].sort(),
     diets: [...new Set([...stored.diets, ...norm(args.diets)])].sort(),
   };
-  if (merged.allergies.length !== stored.allergies.length || merged.diets.length !== stored.diets.length) {
-    await putState(profileKey(spaceId), merged, 7 * 86400);
+  if (fromChat.allergies.length !== stored.allergies.length || fromChat.diets.length !== stored.diets.length) {
+    await putState(profileKey(spaceId), fromChat, 7 * 86400);
   }
-  return merged;
+  return {
+    allergies: [...new Set([...fromChat.allergies, ...(profile?.allergies ?? [])])].sort(),
+    diets: [...new Set([...fromChat.diets, ...(profile?.diets ?? [])])].sort(),
+  };
 }
+
+/** What this chat has said it can't eat (empty if nothing yet). */
+export async function restrictionsFor(spaceId: string): Promise<Restrictions> {
+  return (await getState<Restrictions>(profileKey(spaceId))) ?? { allergies: [], diets: [] };
+}
+
+/** Everyone's restrictions combined: a dish has to work for all of them. */
+export const unionRestrictions = (all: readonly Restrictions[]): Restrictions => ({
+  allergies: [...new Set(all.flatMap((r) => r.allergies))].sort(),
+  diets: [...new Set(all.flatMap((r) => r.diets))].sort(),
+});
 
 export const clearRestrictions = (spaceId: string) => putState(profileKey(spaceId), { allergies: [], diets: [] }, 7 * 86400);
 
@@ -68,7 +89,8 @@ const EMPTY_PARSE: ParsedMessage = { intent: "food_request", positiveQuery: "", 
 export const constraintsFor = (r: Restrictions, budgetMaxUsd?: number): Constraints =>
   buildConstraints({ allergies: r.allergies, diets: r.diets, ...(budgetMaxUsd && budgetMaxUsd > 0 && { budgetMaxUsd }) }, EMPTY_PARSE);
 
-const hasAllergy = (c: Constraints) => c.allergens.length > 0 || c.unmappedAllergyTerms.length > 0;
+// Wording only ("since you've got the allergy"): avoiding pork or beef is not an allergy.
+const hasAllergy = hasRealAllergy;
 
 // ---------- nearby restaurants ----------
 
@@ -113,8 +135,17 @@ export function pickVaried<T extends { r: { cuisine: string[] }; km: number }>(n
 const priceRange = (r: RestaurantSummary) =>
   r.minPriceUsd === null || r.maxPriceUsd === null ? undefined : `$${Math.round(r.minPriceUsd)}-${Math.round(r.maxPriceUsd)}`;
 
+/** Minutes since local midnight, in the bot's time zone (Lambda runs in UTC). */
+const localMinutes = (ms = Date.now()) => {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "numeric", hour12: false }).formatToParts(new Date(ms));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return (get("hour") % 24) * 60 + get("minute");
+};
+
 export async function nearbyRestaurants(spaceId: string, origin: Origin, constraints: Constraints) {
-  const rows = await listRestaurants(constraints, ["meal"]);
+  // In the evening, coffee shops and drink counters aren't offered as places to eat.
+  const meal = mealAt(localMinutes());
+  const rows = (await listRestaurants(constraints, ["meal"])).filter((r) => servesMeal(r.restaurantId, meal));
   const ranked = rows
     .map((r) => ({ r, km: haversineKm(origin, r) }))
     .sort((a, b) => a.km - b.km)
@@ -175,7 +206,8 @@ async function resolveRestaurant(spaceId: string, said: string, constraints: Con
 }
 
 /** Always shown. Many menu items have no price in the data; say so instead of leaving it blank or guessing. */
-export const price = (p: number | null) => (p === null ? " (no price listed)" : ` ($${Number.isInteger(p) ? p : p.toFixed(2)})`);
+export const price = (p: number | null, source?: string) =>
+  p === null ? " (no price listed)" : ` (${source === "estimated" ? "~" : ""}$${Number.isInteger(p) ? p : p.toFixed(2)})`;
 
 /** Menus are missing prices for about half the dishes. When at least `n` priced dishes exist, pick from those. */
 export function preferPriced<T extends { priceUsd: number | null }>(ranked: readonly T[], n = 2): T[] {
@@ -209,7 +241,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
   // If at least one pick has a price, every pick shows its price (or "no price listed"). If none do,
   // say so once instead of repeating it on every line.
   const anyPrice = picks.some((p) => p.dish.priceUsd !== null);
-  const label = (p: Pick) => `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd) : ""}`;
+  const label = (p: Pick) => `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd, p.dish.priceSource) : ""}`;
   const withReason = (lead: string, p: Pick, joiner: string) => {
     const r = reasonFor(p);
     return r ? `${lead}${joiner}${r}` : lead;
@@ -246,6 +278,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
 
 const destKey = (spaceId: string) => `dest#${spaceId}`;
 const dishesKey = (spaceId: string) => `dishes#${spaceId}`;
+const REPEAT_WINDOW_MS = 5 * 60_000;
 
 export interface DishChoice {
   label: string;
@@ -266,7 +299,7 @@ export async function restaurantDishes(
   args: { restaurant: string; request?: string; goals?: readonly Goal[] },
   constraints: Constraints,
   origin?: Origin,
-): Promise<{ text?: string; choices?: DishChoice[]; restaurant?: string; error?: string; options?: string[] }> {
+): Promise<{ text?: string; choices?: DishChoice[]; restaurant?: string; error?: string; options?: string[]; repeat?: boolean }> {
   const place = await resolveRestaurant(spaceId, args.restaurant, constraints);
   if (!place) {
     const offered = (await getState<NearbyEntry[]>(nearKey(spaceId))) ?? [];
@@ -274,6 +307,12 @@ export async function restaurantDishes(
   }
 
   const request = (args.request ?? "").trim();
+
+  // Same restaurant, nothing new asked, picks sent a moment ago: don't send them again. (A vague "sure" after the
+  // picks used to make the model call this again and repeat the whole message.)
+  const recent = await getState<{ restaurant: string; at?: number }>(dishesKey(spaceId));
+  if (!request && recent?.restaurant === place.name && recent.at && Date.now() - recent.at < REPEAT_WINDOW_MS) return { repeat: true };
+
   const parsed = request ? await parseMessage(request) : EMPTY_PARSE;
   const query = parsed.positiveQuery || request || "popular main dish";
   let { candidates } = await retrieve(query, constraints, { kinds: ["meal"], restaurantId: place.id, limit: 25 });
@@ -292,12 +331,12 @@ export async function restaurantDishes(
   await putState(destKey(spaceId), { name: place.name, lat: first.lat, lng: first.lng } satisfies Destination, 3 * 3600);
   const anyPrice = picks.some((p) => p.dish.priceUsd !== null);
   const choices = picks.map((p): DishChoice => ({
-    label: `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd) : ""}`,
+    label: `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd, p.dish.priceSource) : ""}`,
     name: p.name ?? tidyName(p.dish.dishName),
     calories: p.dish.calories,
     proteinG: p.dish.proteinG,
   }));
-  await putState(dishesKey(spaceId), { restaurant: place.name, choices }, 3 * 3600);
+  await putState(dishesKey(spaceId), { restaurant: place.name, choices, at: Date.now() }, 3 * 3600);
   return { text: composeDishMessage(place.name, picks, constraints), choices, restaurant: place.name };
 }
 
@@ -338,6 +377,28 @@ export function dishPoll(restaurant: string, choices: readonly DishChoice[]): Po
 /** Asked in plain text after they pick a dish (no poll). The map link is only sent if they say yes. */
 export const askDirections = () => pick(["want directions?", "need directions over there?", "want me to send the walk there?"]);
 
+const askedKey = (spaceId: string) => `askdir#${spaceId}`;
+const ASKED_TTL = 30 * 60;
+
+/** Remember that the last thing we asked was "want directions?", so a bare "sure" is answered in code, not by the model. */
+export const markAskedDirections = (spaceId: string) => putState(askedKey(spaceId), true, ASKED_TTL);
+
+const YES = /^(yes|yeah|yea|yep|yup|ya|y|sure|ok|okay|k|please|pls|yes please|sure thing|go ahead|send it|do it|definitely|absolutely|of course|bet)\W*$/i;
+const NO = /^(no|nope|nah|n|no thanks|no thank you|nvm|never ?mind|i'?m good|all good|pass)\W*$/i;
+
+/** A plain yes/no to the directions question. Anything else is not an answer and falls through to the model. */
+export function directionsAnswer(text: string): "yes" | "no" | null {
+  const t = text.trim();
+  return YES.test(t) ? "yes" : NO.test(t) ? "no" : null;
+}
+
+/** If we just asked about directions, consume the flag and say whether this message answers it. One question, one answer. */
+export async function takeDirectionsAnswer(spaceId: string, text: string): Promise<"yes" | "no" | null> {
+  if (!(await getState<boolean>(askedKey(spaceId)))) return null;
+  await putState(askedKey(spaceId), null, 1);
+  return directionsAnswer(text);
+}
+
 /** They chose a dish: a short reaction with the numbers if we have them, then a plain-text offer of directions. */
 export async function chooseDish(spaceId: string, said: string): Promise<{ text?: string; error?: string }> {
   const saved = await getState<{ restaurant: string; choices: DishChoice[] }>(dishesKey(spaceId));
@@ -351,5 +412,6 @@ export async function chooseDish(spaceId: string, said: string): Promise<{ text?
       ? [`nice, the ${dish.name} runs ${facts}`, `good call, ${facts} on the ${dish.name}`, `the ${dish.name}, solid. ${facts}`]
       : [`nice pick, the ${dish.name}`, `good call on the ${dish.name}`, `the ${dish.name}, solid`],
   );
+  await markAskedDirections(spaceId);
   return { text: `${text}\n\n${askDirections()}` };
 }
