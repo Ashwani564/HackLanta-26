@@ -33,7 +33,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const pollApi = deps.polls ?? realPolls;
   const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage, sendDmCard, openDm);
   // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
-  return { handle, invite, tick: () => tickPlans(planDeps) };
+  return { handle, invite, tick: () => tickPlans(planDeps, Number(process.env.PLAN_TICK_SPAN_MS ?? 50_000)) };
 
   async function handle(space: any, message: any) {
   // Read receipts and typing signals are noise for now.

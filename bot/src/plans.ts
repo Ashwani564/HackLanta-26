@@ -272,6 +272,16 @@ async function ask(plan: Plan, p: Person, d: PlanDeps, spec: PollSpec): Promise<
 
 const picksOf = (a?: Ask): string[] => a?.picks ?? (a?.answer ? [a.answer] : []);
 
+/** A short "got it" naming what they ticked ("got it, 8:30 PM or 9:00 PM"). Nothing for declines or yes/no answers. */
+function ackFor(key: AskKey, a: Ask): string | undefined {
+  if (key === "confirm") return undefined;
+  const picked = picksOf(a);
+  if (picked.length === 0 || picked.some((v) => v === "no" || v === "none")) return undefined;
+  const names = picked.map((v) => (a.rec.options.find((o) => o.value === v)?.label ?? v).replace(/ · \d+ min$/, ""));
+  const said = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return pick([`got it, ${said}`, `${said}, noted`, `ok, ${said} for you`]);
+}
+
 async function readAnswers(plan: Plan, d: PlanDeps) {
   for (const p of askers(plan)) {
     for (const key of ["time", "confirm", "place", "alt"] as const) {
@@ -285,6 +295,8 @@ async function readAnswers(plan: Plan, d: PlanDeps) {
         }
         if (!a.rec.multi) {
           a.answer = votes[0]!;
+          const ack = ackFor(key, a);
+          if (ack) await d.sendText(p.phone, ack);
           continue;
         }
         // Several taps allowed: wait until they stop changing their mind, and say nothing in between.
@@ -295,6 +307,8 @@ async function readAnswers(plan: Plan, d: PlanDeps) {
         } else if (d.now() - (a.changedAt ?? d.now()) >= SETTLE_MS()) {
           a.picks = votes;
           a.answer = votes[0]!;
+          const ack = ackFor(key, a);
+          if (ack) await d.sendText(p.phone, ack);
         }
       } catch (err) {
         console.warn(`  plan ${plan.id}: couldn't read ${p.name}'s ${key} poll: ${(err as Error).message}`);
@@ -754,14 +768,23 @@ export async function startPlan(d: PlanDeps, who: { phone: string; chatGuid: str
   return { started: true, planId: plan.id, texting: people.map((p) => cap(p.name)), not_found: notFound, ambiguous, times: slots.map(label) };
 }
 
-/** The check that runs every minute: read answers, nudge, and move every active plan forward. */
-export async function tickPlans(d: PlanDeps) {
-  for (const id of await activeIds()) {
-    await withLease(id, async () => {
-      const plan = await getPlan(id);
-      if (!plan) return void (await setActive((await activeIds()).filter((x) => x !== id)));
-      await advance(plan, d);
-    }).catch((err) => console.warn(`  plan ${id} tick failed: ${(err as Error).message}`));
+/**
+ * The check that runs every minute: read answers, nudge, and move every active plan forward. Photon doesn't forward poll
+ * taps, so this is what notices them: with `spanMs` it keeps looking every 3 seconds for most of the minute instead of once.
+ */
+export async function tickPlans(d: PlanDeps, spanMs = 0) {
+  const until = Date.now() + spanMs;
+  for (;;) {
+    const ids = await activeIds();
+    for (const id of ids) {
+      await withLease(id, async () => {
+        const plan = await getPlan(id);
+        if (!plan) return void (await setActive((await activeIds()).filter((x) => x !== id)));
+        await advance(plan, d);
+      }).catch((err) => console.warn(`  plan ${id} tick failed: ${(err as Error).message}`));
+    }
+    if (ids.length === 0 || Date.now() + 3000 >= until) return;
+    await new Promise((r) => setTimeout(r, 3000));
   }
 }
 
@@ -769,7 +792,7 @@ export async function tickPlans(d: PlanDeps) {
 export async function watchPlan(d: PlanDeps, id: string, forMs: number) {
   const until = Date.now() + forMs;
   while (Date.now() < until) {
-    await new Promise((r) => setTimeout(r, 4000));
+    await new Promise((r) => setTimeout(r, 3000));
     const done = await withLease(id, async () => {
       const plan = await getPlan(id);
       if (!plan || isOver(plan)) return true;

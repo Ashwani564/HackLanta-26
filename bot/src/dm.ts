@@ -1,5 +1,5 @@
 // Text one person directly (opening the chat if needed), from outside any conversation with them.
-import { app as appCard, attachment } from "spectrum-ts";
+import { attachment, richlink } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 
 /** Returns the chat's GUID, which polls need. */
@@ -17,11 +17,11 @@ export async function sendDmImage(app: any, phone: string, image: Buffer, name =
   await dm.send(attachment(image, { name, mimeType: "image/jpeg" }));
 }
 
-/** Send one person a Spectrum app card (a tappable iMessage card that opens `url`), opening the chat if needed. */
+/** Send one person the plan card as an iMessage rich link (the page's og:image becomes the big preview), opening the chat if needed. */
 export async function sendDmCard(app: any, phone: string, url: string): Promise<void> {
   const im = imessage(app as any);
   const dm = await im.space.create(await im.user(phone));
-  await dm.send(appCard(url));
+  await dm.send(richlink(url));
 }
 
 /** Make sure a chat with this person exists, without sending anything. Returns its GUID (polls and location requests need it). */

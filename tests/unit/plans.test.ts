@@ -332,6 +332,19 @@ test("several picks: nothing is said per tap, the best shared time wins without 
   assert.deepEqual(plan.people.find((p) => p.name === "ashwani")!.time!.picks, ["18:30", "19:00", "19:30"]);
 });
 
+test("once a tap settles they get one acknowledgement naming what they picked, not one per tap", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  w.tap(ASHWANI, "what time", "6:30 PM");
+  await advance(await w.plan(planId), w.deps);
+  w.tap(ASHWANI, "what time", "7:00 PM");
+  await advance(await w.plan(planId), w.deps);
+  assert.equal(w.textsTo(ASHWANI).filter((t) => /6:30|7:00/.test(t)).length, 0, "nothing while they're still tapping");
+  await go(w, planId);
+  const acks = w.textsTo(ASHWANI).filter((t) => /6:30 PM.*7:00 PM/.test(t));
+  assert.equal(acks.length, 1);
+});
+
 test("changing your mind restarts the wait; the answer counts only once you stop tapping", async () => {
   const w = world();
   const { planId } = (await start(w)) as { planId: string };
@@ -373,7 +386,7 @@ test("locations: after the time answer a friend not sharing gets ONE message (th
   w.tap(PRINCY, "what time", "7:00 PM");
   await go(w, planId);
   assert.deepEqual([...w.locRequests].sort(), [ASHWANI, PRINCY]);
-  assert.deepEqual(w.textsTo(ASHWANI), []); // the location request is a card, not a text
+  assert.deepEqual(w.textsTo(ASHWANI).filter((t) => !/7:00 PM/.test(t)), []); // the location request is a card, not a text (only the "got it" for their pick)
   assert.ok(!w.polls.some((p) => p.phone === ASHWANI && p.title.startsWith("where to eat?")), "waits for them to share");
   w.locs[ASHWANI] = HERE[ASHWANI]!; // Ashwani shares
   await go(w, planId);
