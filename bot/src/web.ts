@@ -9,7 +9,8 @@ const PORT = Number(process.env.PORT ?? 8787);
 export function startWeb() {
   createServer(async (req, res) => {
     if (isHealthPath(req.url ?? "")) {
-      const out = healthReply(await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req)));
+      const ctx = { accept: req.headers.accept, userAgent: req.headers["user-agent"] };
+      const out = healthReply(await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req), ctx));
       res.writeHead(out.status, out.headers).end(out.text);
       return;
     }

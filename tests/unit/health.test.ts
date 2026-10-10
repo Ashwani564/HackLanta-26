@@ -186,6 +186,7 @@ test("opening the sync link in a browser shows the setup page, which never print
   assert.ok(out.html?.includes('href="https://www.icloud.com/shortcuts/abc123"'));
   assert.ok(out.html?.includes("Run Immediately"));
   assert.ok(out.html?.includes('href="shortcuts://run-shortcut?name=Pie%20Sync"'), "Test it runs the shortcut by name");
+  assert.ok(!/border-radius:(?!0)/.test(out.html ?? ""), "square corners only");
   assert.ok(!out.html?.includes(token), "the page reads the link from its own address instead");
   assert.equal((await handleHealthRequest("GET", `/health/${token}/`)).status, 200);
   assert.equal((await handleHealthRequest("POST", `/health/${token}`)).status, 405);
@@ -265,4 +266,37 @@ test("the person is told once, on their first sync only, and a failed notice nev
   const res = await handleHealthRequest("GET", `/health/${other}/pending`, "", failing);
   assert.equal(res.status, 200);
   assert.deepEqual((res.body as { meals: unknown[] }).meals, []);
+});
+
+// ---------- the bare link as the sync address ----------
+
+const shortcuts = { accept: "*/*", userAgent: "Shortcuts/2607.0.4 CFNetwork/3826.500.111 Darwin/24.5.0" };
+const safari = { accept: "text/html,application/xhtml+xml,*/*;q=0.8", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1" };
+
+test("the bare link is the page for a browser and the sync address for the shortcut", async () => {
+  const user = person();
+  const token = await syncTokenFor(user);
+  const link = `/health/${token}`;
+  await logMeal(user, { name: "Pasta", calories: 600, protein: 20, carbs: 80, fat: 15, price: 0 });
+
+  const page = await handleHealthRequest("GET", link, "", safari);
+  assert.ok(page.html?.includes("<h1>Connect Apple Health</h1>"));
+  assert.deepEqual((await call("GET", token, "status")).body, { synced_at: null }, "a browser looking at the page is not a sync");
+
+  // The shortcut with its "/pending", "/ack" and "/metrics" cut off still does all three jobs.
+  const pending = await handleHealthRequest("GET", link, "", shortcuts);
+  assert.equal(pending.html, undefined);
+  const meals = (pending.body as { meals: { id: string; name: string }[] }).meals;
+  assert.deepEqual(meals.map((m) => m.name), ["Pasta"]);
+  assert.notEqual(((await call("GET", token, "status")).body as { synced_at: string | null }).synced_at, null);
+
+  assert.deepEqual((await handleHealthRequest("POST", link, JSON.stringify({ ids: meals[0]!.id }), shortcuts)).body, { acked: 1 });
+  assert.deepEqual((await handleHealthRequest("GET", `${link}/`, "", shortcuts)).body, { meals: [] });
+  assert.deepEqual((await handleHealthRequest("POST", link, JSON.stringify({ active_kcal: "300", steps: "4000" }), shortcuts)).body, { ok: true });
+  assert.equal((await getMetrics(keyFor(user)))?.steps, 4000);
+  assert.equal((await handleHealthRequest("POST", link, "not json", shortcuts)).status, 400);
+
+  // The full routes are unchanged whoever asks, and a browser can't post to the page.
+  assert.deepEqual((await handleHealthRequest("GET", `${link}/pending`, "", safari)).body, { meals: [] });
+  assert.equal((await handleHealthRequest("POST", link, "{}", safari)).status, 405);
 });
