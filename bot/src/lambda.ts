@@ -37,6 +37,8 @@ const getBot = () =>
     return { app, handle: handler.handle, tick: handler.tick };
   })());
 
+import { loadCard, rememberBaseUrl } from "./cards.js";
+
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
@@ -53,7 +55,10 @@ export const handler = async (event: any, context: { functionName: string }) => 
     return { ok: true };
   }
 
-  // Function URL request from Photon.
+  // Function URL request.
+  await rememberBaseUrl(event?.requestContext?.domainName);
+  const route = cardRoute(event);
+  if (route) return serveCard(route);
   if (event?.requestContext?.http?.method !== "POST") return { statusCode: 200, body: "dining-agent webhook" };
   const body = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8");
   const headers: Headers = event.headers ?? {};
@@ -129,4 +134,22 @@ async function selfTest(audioBase64?: string) {
   const { audio, duration } = await speak("Try the beef rice at Queen Tea. It's about six hundred fifty calories.");
   const transcript = await transcribe(await toWav(audio));
   return { ok: !!transcript, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
+}
+
+// ---------- plan card pages: GET /card/<token> (the page) and /card/<token>.jpg (its picture) ----------
+
+function cardRoute(event: any): { token: string; jpg: boolean; base: string } | undefined {
+  if (event?.requestContext?.http?.method !== "GET") return undefined;
+  const m = /^\/card\/([A-Za-z0-9_-]{8,40})(\.jpg)?$/.exec(event.rawPath ?? "");
+  return m ? { token: m[1]!, jpg: !!m[2], base: `https://${event.requestContext.domainName}` } : undefined;
+}
+
+async function serveCard(r: { token: string; jpg: boolean; base: string }) {
+  const card = await loadCard(r.token);
+  if (!card) return { statusCode: 404, headers: { "content-type": "text/plain" }, body: "this plan card has expired" };
+  const { cardPageHtml, meetupJpeg } = await import("./meetup-card.js");
+  const cache = { "cache-control": "public, max-age=300" };
+  if (r.jpg) return { statusCode: 200, isBase64Encoded: true, headers: { "content-type": "image/jpeg", ...cache }, body: (await meetupJpeg(card)).toString("base64") };
+  const page = `${r.base}/card/${r.token}`;
+  return { statusCode: 200, headers: { "content-type": "text/html; charset=utf-8", ...cache }, body: cardPageHtml(card, `${page}.jpg`, page) };
 }

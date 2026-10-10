@@ -29,6 +29,8 @@ import { type PollRecord, type PollSpec, readVotes, realPolls } from "./polls.js
 import { getState, leaseOnce, putState, releaseLease } from "./store.js";
 import { TIME_ZONE } from "./day.js";
 import { getUser, listProfiles } from "./users.js";
+import { publishCard } from "./cards.js";
+import { servesMeal } from "../../src/data/cuisines.js";
 
 export type Meal = "dinner" | "lunch" | "breakfast";
 export type Day = "today" | "tomorrow";
@@ -113,7 +115,7 @@ export interface PlanDeps {
   sendCard(phone: string, card: MeetupCard): Promise<void>;
   users(): Promise<{ firstName: string | null; lastName: string | null; phoneNumber: string }[]>;
   /** Up to three places that work for all of these restrictions, the fairest walk for everyone first. */
-  places(restrictions: Restrictions, origins: Origin[]): Promise<Place[]>;
+  places(restrictions: Restrictions, origins: Origin[], meal: Meal): Promise<Place[]>;
   organizerOrigin(chatGuid: string): Promise<Origin | undefined>;
   /** Which option (index) a typed reply means, or -1 if it isn't an answer. */
   interpret(question: string, options: string[], text: string): Promise<number>;
@@ -126,7 +128,7 @@ const CONTEXT_MS = () => minutes(Number(process.env.PLAN_CONTEXT_MIN ?? 5));
 const NUDGE_MS = () => minutes(Number(process.env.PLAN_NUDGE_MIN ?? 2));
 const GIVE_UP_MS = () => minutes(Number(process.env.PLAN_GIVE_UP_MIN ?? 5));
 /** A multi-pick poll counts once nothing has changed for this long. */
-const SETTLE_MS = () => Number(process.env.PLAN_SETTLE_SEC ?? 15) * 1000;
+const SETTLE_MS = () => Number(process.env.PLAN_SETTLE_SEC ?? 3) * 1000;
 /** How long the place step waits for people who haven't shared their location. */
 const LOC_WAIT_MS = () => minutes(Number(process.env.PLAN_LOC_WAIT_MIN ?? 3));
 const WALK_KM_PER_MIN = 0.08;
@@ -205,6 +207,8 @@ export function winner(options: readonly string[], votes: readonly string[]): st
 const planKey = (id: string) => `plan#${id}`;
 const pointerKey = (phone: string) => `planfor#${phone}`;
 const lockKey = (id: string) => `planlock#${id}`;
+/** Points a person at their live plan for as long as it runs (the typed-reply pointer above expires after 5 minutes). */
+const voteKey = (phone: string) => `planvote#${phone}`;
 const ACTIVE = "plans#active";
 const PLAN_TTL = 3 * 86400;
 /** The per-person pointer that routes a typed reply to its plan. It expires with the context window. */
@@ -311,7 +315,10 @@ async function fail(plan: Plan, d: PlanDeps, why: string) {
 }
 
 async function finish(plan: Plan) {
-  for (const p of [plan.organizer, ...plan.people]) await putState(pointerKey(p.phone), null, 1);
+  for (const p of [plan.organizer, ...plan.people]) {
+    await putState(pointerKey(p.phone), null, 1);
+    await putState(voteKey(p.phone), null, 1);
+  }
   await setActive((await activeIds()).filter((x) => x !== plan.id));
 }
 
@@ -394,14 +401,14 @@ async function ensurePlaces(plan: Plan, d: PlanDeps): Promise<boolean> {
   if (plan.places) return true;
   const origins = askers(plan).flatMap((p) => (p.loc ? [p.loc] : []));
   const all = await Promise.all(askers(plan).map((p) => d.restrictionsFor(`any;-;${p.phone}`)));
-  const places = await d.places(unionRestrictions(all), origins);
+  const places = await d.places(unionRestrictions(all), origins, plan.meal);
   if (places.length === 0) {
     await fail(plan, d, "nothing nearby fits everyone's food restrictions");
     return false;
   }
   plan.places = places;
   // With no restrictions at all, how many places are there? (Only a count: nobody's restrictions are named.)
-  plan.placesTotal = Math.max(places.length, (await d.places({ allergies: [], diets: [] }, [])).length);
+  plan.placesTotal = Math.max(places.length, (await d.places({ allergies: [], diets: [] }, [], plan.meal)).length);
   return true;
 }
 
@@ -436,31 +443,38 @@ async function stageTime(plan: Plan, d: PlanDeps): Promise<boolean> {
     const rest = plan.people.filter((x) => x !== p);
     return rest.length === 0 ? "you" : `you and ${names(rest)}`;
   };
-  for (const p of live(plan)) {
-    if (p.time) continue;
-    const options = plan.slots.map((s) => ({ label: label(s), value: s }));
-    p.time = await ask(
-      plan, p, d,
-      `hey ${cap(p.name)}, ${cap(plan.organizer.name)} wants to do ${plan.meal} ${plan.day}${plan.anchor ? ` around ${label(plan.anchor)}` : ""} with ${withWho(p)}. tap every time that works for you (if you've got allergies, text me so i can factor them in)`,
-      { kind: "restaurant", plan: true, multi: true, title: `what time works for ${plan.meal} ${plan.day}?`, options: [...options, { label: "can't make it", value: "no" }] },
-    );
-    await askLocation(d, p);
-  }
+  // Each person's messages are paced on their own (see `paced`), so everyone is texted at the same time but nobody gets a burst.
+  await Promise.all(
+    live(plan)
+      .filter((p) => !p.time)
+      .map(async (p) => {
+        const options = plan.slots.map((s) => ({ label: label(s), value: s }));
+        p.time = await ask(
+          plan, p, d,
+          `hey ${cap(p.name)}, ${cap(plan.organizer.name)} wants to do ${plan.meal} ${plan.day}${plan.anchor ? ` around ${label(plan.anchor)}` : ""} with ${withWho(p)}. tap every time that works for you (if you've got allergies, text me so i can factor them in)`,
+          { kind: "restaurant", plan: true, multi: true, title: `what time works for ${plan.meal} ${plan.day}?`, options: [...options, { label: "can't make it", value: "no" }] },
+        );
+        await askLocation(d, p);
+      }),
+  );
   // The places go out with the times, so people answer both in one go.
   if (!(await ensurePlaces(plan, d))) return false;
-  for (const p of askers(plan)) {
-    if (p.place) continue;
-    const n = plan.places!.length, total = plan.placesTotal ?? n;
-    // Say how many fit, without saying whose restrictions cut the list.
-    const intro = n === total ? `and where to eat? all ${n} spots work for everyone's food restrictions` : `and where to eat? ${n} of ${total} spots have something that works for everyone's food restrictions`;
-    p.place = await ask(plan, p, d, `${intro}. tap every one you're up for, or say "anywhere"`, {
-      kind: "restaurant",
-      plan: true,
-      multi: true,
-      title: "where to eat?",
-      options: placeOptions(plan, p),
-    });
-  }
+  const n = plan.places!.length, total = plan.placesTotal ?? n;
+  // Say how many fit, without saying whose restrictions cut the list.
+  const intro = n === total ? `and where to eat? all ${n} spots work for everyone's food restrictions` : `and where to eat? ${n} of ${total} spots have something that works for everyone's food restrictions`;
+  await Promise.all(
+    askers(plan)
+      .filter((p) => !p.place)
+      .map(async (p) => {
+        p.place = await ask(plan, p, d, `${intro}. tap every one you're up for, or say "anywhere"`, {
+          kind: "restaurant",
+          plan: true,
+          multi: true,
+          title: "where to eat?",
+          options: placeOptions(plan, p),
+        });
+      }),
+  );
   await chase(plan, d, "time");
   await chase(plan, d, "alt");
   await handleDecliners(plan, d);
@@ -542,7 +556,7 @@ async function stagePlace(plan: Plan, d: PlanDeps): Promise<boolean> {
     if (origins.length === 0) origins = [await d.organizerOrigin(plan.organizer.chatGuid)].flatMap((o) => (o ? [o] : []));
     // The group's food restrictions are everyone's combined, including the organizer's.
     const all = await Promise.all([plan.organizer, ...live(plan)].map((p) => d.restrictionsFor(`any;-;${p.phone}`)));
-    const places = await d.places(unionRestrictions(all), origins);
+    const places = await d.places(unionRestrictions(all), origins, plan.meal);
     if (places.length === 0) {
       await fail(plan, d, "nothing nearby fits everyone's food restrictions");
       return false;
@@ -576,7 +590,7 @@ async function stagePlace(plan: Plan, d: PlanDeps): Promise<boolean> {
   // Restrictions can arrive after the polls went out (someone texts an allergy), so check again before choosing.
   const origins = askers(plan).flatMap((p) => (p.loc ? [p.loc] : []));
   const now = await Promise.all(askers(plan).map((p) => d.restrictionsFor(`any;-;${p.phone}`)));
-  const stillOk = new Set((await d.places(unionRestrictions(now), origins)).map((x) => x.name));
+  const stillOk = new Set((await d.places(unionRestrictions(now), origins, plan.meal)).map((x) => x.name));
   const options = plan.places.map((x) => x.name).filter((n) => stillOk.has(n));
   if (options.length === 0) {
     await fail(plan, d, "nothing nearby fits everyone's food restrictions");
@@ -711,7 +725,10 @@ export async function startPlan(d: PlanDeps, who: { phone: string; chatGuid: str
   await askLocation(d, plan.organizer);
   await savePlan(plan);
   await setActive([...(await activeIds()), plan.id]);
-  for (const p of [plan.organizer, ...people]) await putState(pointerKey(p.phone), plan.id, pointerTtl());
+  for (const p of [plan.organizer, ...people]) {
+    await putState(pointerKey(p.phone), plan.id, pointerTtl());
+    await putState(voteKey(p.phone), plan.id, PLAN_TTL);
+  }
   console.log(`  plan ${plan.id}: ${meal} ${day} with ${people.map((p) => p.name).join(", ")}${mustAsk ? " (asking the organizer for a time)" : ""}`);
   if (mustAsk) {
     const question = pick([`what time are you thinking for ${meal} ${day === "today" ? "" : day}? or just say anytime`, `what time works for you for ${meal} ${day === "today" ? "" : day}? or say anytime`]).replace(/\s+\?/, "?");
@@ -749,6 +766,38 @@ export async function watchPlan(d: PlanDeps, id: string, forMs: number) {
 }
 
 const ANYWHERE = /\b(any ?where|any ?(place|spot|one|of them|of 'em)|all of (them|'em)|everything|i'?m (good|fine|easy) with (any|all)|don'?t care|doesn'?t matter|no preference|you pick|up to you|whatever)\b/i;
+
+/** Titles of the polls the plan sends, so a vote can be told apart from a vote on a dish or restaurant poll. */
+export const isPlanPollTitle = (title: string | undefined) => /^(what time works for |where to eat\?|does .+ work\?|what other time works for )/i.test(title ?? "");
+
+/**
+ * Someone just tapped a plan poll. Don't wait for the once-a-minute check: look right away, and keep looking every
+ * second until their tap has settled and been counted (a few seconds), so the next message goes out straight away.
+ * Returns false if they have no live plan.
+ */
+export async function onPlanVote(d: PlanDeps, phone: string, forMs = 25_000): Promise<boolean> {
+  const id = await getState<string>(voteKey(phone));
+  if (!id) return false;
+  const answeredNow = (plan: Plan) => {
+    const person = askers(plan).find((x) => x.phone === phone);
+    return person ? (["time", "confirm", "place", "alt"] as const).filter((k) => person[k]?.answer).length : -1;
+  };
+  let before: number | undefined;
+  const until = Date.now() + forMs;
+  while (Date.now() < until) {
+    const done = await withLease(id, async () => {
+      const plan = await getPlan(id);
+      if (!plan || isOver(plan)) return true;
+      before ??= answeredNow(plan);
+      await advance(plan, d);
+      const now = answeredNow(plan);
+      return now < 0 || now > before;
+    });
+    if (done) return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return true;
+}
 
 const pendingAsk = (plan: Plan, p: Person): { key: AskKey; ask: Ask } | undefined => {
   for (const key of ["time", "confirm", "place", "alt"] as const) if (p[key] && !p[key]!.answer) return { key, ask: p[key]! };
@@ -856,27 +905,66 @@ export async function planNoteFor(phone: string, nowMs: number = Date.now()): Pr
   return `${cap(plan.organizer.name)} asked to plan ${plan.meal} ${plan.day} with ${names(others)}. ${status}.${spots}${out.length > 0 ? ` can't make it: ${names(out)}.` : ""}`;
 }
 
+// ---------- pacing ----------
+
+const PACE_MS = () => Number(process.env.PLAN_PACE_MS ?? 2000);
+const lanes = new Map<string, Promise<unknown>>();
+const lastSent = new Map<string, number>();
+/**
+ * Run a send for one person, at least PACE_MS after their previous one. A person's sends queue up in order;
+ * different people are independent. A single message after a quiet spell goes out at once.
+ */
+export function paced<T>(phone: string, fn: () => Promise<T>): Promise<T> {
+  const run = (lanes.get(phone) ?? Promise.resolve()).catch(() => {}).then(async () => {
+    const wait = (lastSent.get(phone) ?? 0) + PACE_MS() - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await fn();
+    } finally {
+      lastSent.set(phone, Date.now());
+    }
+  });
+  lanes.set(phone, run);
+  return run;
+}
+const phoneOf = (chatGuid: string) => chatGuid.replace(/^any;-;/, "");
+
 // ---------- the real dependencies ----------
 
 export function realPlanDeps(
   app: any,
   sendDm: (app: any, phone: string, text: string) => Promise<string>,
   sendImage?: (app: any, phone: string, image: Buffer) => Promise<void>,
+  sendCardLink?: (app: any, phone: string, url: string) => Promise<void>,
 ): PlanDeps {
   return {
     now: () => Date.now(),
-    sendText: (phone, text) => sendDm(app, phone, text),
-    polls: { send: realPolls.send, read: readVotes },
+    sendText: (phone, text) => paced(phone, () => sendDm(app, phone, text)),
+    polls: { send: (chatGuid, spec) => paced(phoneOf(chatGuid), () => realPolls.send(chatGuid, spec)), read: readVotes },
     location: { peek: peekLocation, request: requestLocation },
-    sendCard: async (phone, card) => void (sendImage && (await sendImage(app, phone, await meetupJpeg(card)))),
+    // A Spectrum app card that links to the plan page; if that can't be sent, fall back to the picture.
+    sendCard: (phone, card) =>
+      paced(phone, async () => {
+        const url = sendCardLink ? await publishCard(card).catch(() => undefined) : undefined;
+        if (url && sendCardLink) {
+          try {
+            await sendCardLink(app, phone, url);
+            return;
+          } catch (err) {
+            console.warn(`  card link failed, sending the picture instead: ${(err as Error).message}`);
+          }
+        }
+        if (sendImage) await sendImage(app, phone, await meetupJpeg(card));
+      }),
     // People we have profiles for come first (their names are the ones we know), then anyone else Photon knows.
     users: async () => {
       const [known, photon] = await Promise.all([listProfiles().catch(() => []), (await import("./invite.js")).listUsers().catch(() => [])]);
       const mine = known.map((u) => ({ firstName: u.name, lastName: null as string | null, phoneNumber: u.phone }));
       return [...mine, ...photon.filter((u) => !mine.some((m) => m.phoneNumber === u.phoneNumber))];
     },
-    places: async (restrictions, origins) => {
-      const rows = await listRestaurants(constraintsFor(restrictions), ["meal"]);
+    places: async (restrictions, origins, meal) => {
+      // Coffee shops and drink counters don't make the list for dinner.
+      const rows = (await listRestaurants(constraintsFor(restrictions), ["meal"])).filter((r) => servesMeal(r.restaurantId, meal));
       // Fairest first: the shortest worst-case walk, then the shortest total. With nobody's location, the catalog's order.
       const ranked = rows
         .map((r, i) => {

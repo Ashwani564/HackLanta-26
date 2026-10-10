@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type Place, type Plan, type PlanDeps, advance, altSlotsFor, chooseTime, handleReply, label, minutesNow, parseTimeAnswer, planNoteFor, proposeTime, slotsAround, slotsFor, startPlan, tickPlans, winner } from "../../bot/src/plans.js";
+import { type Place, type Plan, type PlanDeps, advance, altSlotsFor, chooseTime, handleReply, isPlanPollTitle, label, minutesNow, onPlanVote, paced, parseTimeAnswer, planNoteFor, proposeTime, slotsAround, slotsFor, startPlan, tickPlans, winner } from "../../bot/src/plans.js";
 import { getState, putState } from "../../bot/src/store.js";
 import type { PollRecord, PollSpec } from "../../bot/src/polls.js";
 import type { MeetupCard } from "../../bot/src/meetup-card.js";
@@ -33,6 +33,7 @@ function world(opts: { places?: Place[]; locs?: Record<string, { lat: number; ln
     locs: { ...(opts.locs ?? HERE) } as Record<string, { lat: number; lng: number }>,
     locRequests: [] as string[],
     originsSeen: [] as { lat: number; lng: number }[][],
+    mealsSeen: [] as string[],
     cards: [] as { phone: string; card: MeetupCard }[],
     deps: undefined as unknown as PlanDeps,
     /** The person taps `label` on their latest poll whose title matches. */
@@ -75,7 +76,7 @@ function world(opts: { places?: Place[]; locs?: Record<string, { lat: number; ln
       { firstName: "Ashwani", lastName: "M", phoneNumber: ASHWANI },
       { firstName: "Princy", lastName: "M", phoneNumber: PRINCY },
     ],
-    places: async (_r, origins) => (w.originsSeen.push(origins), opts.places ?? PLACES),
+    places: async (_r, origins, meal) => (w.originsSeen.push(origins), w.mealsSeen.push(meal), opts.places ?? PLACES),
     organizerOrigin: async () => undefined,
     restrictionsFor: async () => ({ allergies: [], diets: [] }),
     interpret: async (_q, options, text) => options.findIndex((o) => o.toLowerCase().includes(text.toLowerCase())),
@@ -323,10 +324,10 @@ test("changing your mind restarts the wait; the answer counts only once you stop
   w.untap(ASHWANI, "what time", "6:30 PM");
   w.tap(ASHWANI, "what time", "8:00 PM");
   await advance(await w.plan(planId), w.deps);
-  w.clock += 10_000; // 10s since the change: still open
+  w.clock += 1_500; // 1.5s since the change: still open (a tap counts after 3s of quiet)
   await advance(await w.plan(planId), w.deps);
   assert.equal((await ashwani()).answer, undefined);
-  w.clock += 10_000;
+  w.clock += 2_000;
   await advance(await w.plan(planId), w.deps);
   assert.deepEqual((await ashwani()).picks, ["20:00"]);
 });
@@ -615,4 +616,74 @@ test("the plan card: the font files ship, long names wrap to two lines, and it r
   assert.deepEqual(wrapName("Mangos Caribbean Restaurant", 22), ["Mangos Caribbean", "Restaurant"]);
   const jpeg = await meetupJpeg({ meal: "dinner", place: "Mangos Caribbean Restaurant", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash" }, { name: "princy", walkMin: 4 }] });
   assert.ok(jpeg.length > 5000);
+});
+
+// ---------- pacing, instant votes, no coffee shops at dinner, card page ----------
+
+test("paced: one person's sends keep at least the gap apart and stay in order; other people aren't held up", async () => {
+  process.env.PLAN_PACE_MS = "120";
+  const at: Record<string, number[]> = { a: [], b: [] };
+  const order: string[] = [];
+  const t0 = Date.now();
+  await Promise.all([
+    paced("a", async () => (at.a!.push(Date.now() - t0), order.push("a1"))),
+    paced("a", async () => (at.a!.push(Date.now() - t0), order.push("a2"))),
+    paced("a", async () => (at.a!.push(Date.now() - t0), order.push("a3"))),
+    paced("b", async () => (at.b!.push(Date.now() - t0), order.push("b1"))),
+  ]);
+  delete process.env.PLAN_PACE_MS;
+  assert.deepEqual(order.filter((x) => x.startsWith("a")), ["a1", "a2", "a3"]);
+  assert.ok(at.a![1]! - at.a![0]! >= 100 && at.a![2]! - at.a![1]! >= 100, `gaps: ${at.a}`);
+  assert.ok(at.b![0]! < 60, "a different person is texted right away");
+});
+
+test("plan polls are told apart from dish and restaurant polls by title", () => {
+  for (const yes of ["what time works for dinner today?", "where to eat?", "does 7:30 PM work?", "what other time works for dinner today?"]) assert.ok(isPlanPollTitle(yes), yes);
+  for (const no of ["what are you getting at Moe's?", "pick a spot", undefined]) assert.ok(!isPlanPollTitle(no as string), String(no));
+});
+
+test("a tap is counted within a few seconds by looking right away, not at the next minute check", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  // Time moves 1.5s each time the engine looks, standing in for real seconds passing.
+  w.deps.now = () => (w.clock += 1500);
+  w.tap(ASHWANI, "what time", "7:00 PM");
+  const t0 = Date.now();
+  assert.equal(await onPlanVote(w.deps, ASHWANI, 15_000), true);
+  assert.ok(Date.now() - t0 < 8000, "returns once the tap is counted");
+  assert.equal((await w.plan(planId)).people.find((p) => p.name === "ashwani")!.time!.answer, "19:00");
+  assert.equal(await onPlanVote(w.deps, "+19999999999"), false); // nobody else's plan
+});
+
+test("dinner places never include coffee shops or drink counters; the plan asks for dinner places", async () => {
+  const { servesMeal, mealAt } = await import("../../src/data/cuisines.js");
+  for (const id of ["starbucks", "saxbys", "queen-tea"]) {
+    assert.equal(servesMeal(id, "dinner"), false, id);
+    assert.equal(servesMeal(id, "lunch"), true, id);
+    assert.equal(servesMeal(id, "breakfast"), true, id);
+  }
+  for (const id of ["stir-house", "india-eats", "moes", "mangos", "mr-fries-man", "strikeout-wingz"]) assert.equal(servesMeal(id, "dinner"), true, id);
+  assert.equal(mealAt(9 * 60), "breakfast");
+  assert.equal(mealAt(12 * 60), "lunch");
+  assert.equal(mealAt(16 * 60 + 30), "dinner");
+  const w = world();
+  await start(w);
+  assert.ok(w.mealsSeen.length > 0 && w.mealsSeen.every((m) => m === "dinner"));
+});
+
+test("the card page: link-preview tags, escaped names, and a token that can't be guessed or abused", async () => {
+  const { cardPageHtml } = await import("../../bot/src/meetup-card.js");
+  const { publishCard, loadCard, rememberBaseUrl, isCardToken } = await import("../../bot/src/cards.js");
+  const card = { meal: "dinner", place: "Stir House <b>Atlanta</b>", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash", walkMin: 6 }, { name: "princy" }] };
+  const html = cardPageHtml(card, "https://x.test/card/abc.jpg", "https://x.test/card/abc");
+  assert.match(html, /og:title" content="Stir House &#60;b&#62;Atlanta&#60;\/b&#62; · 7:30 PM"/);
+  assert.match(html, /og:description" content="Dinner, Saturday, Oct 10\. Going: Ash, Princy"/);
+  assert.match(html, /og:image" content="https:\/\/x\.test\/card\/abc\.jpg"/);
+  assert.doesNotMatch(html, /<b>Atlanta/);
+  await rememberBaseUrl("abc123.lambda-url.us-east-2.on.aws");
+  const url = (await publishCard(card))!;
+  assert.match(url, /^https:\/\/abc123\.lambda-url\.us-east-2\.on\.aws\/card\/[A-Za-z0-9_-]{12}$/);
+  assert.deepEqual(await loadCard(url.split("/").pop()!), card);
+  assert.equal(await loadCard("../../etc/passwd"), undefined);
+  assert.equal(isCardToken("short"), false);
 });

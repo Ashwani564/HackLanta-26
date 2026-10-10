@@ -101,3 +101,32 @@ export async function meetupJpeg(c: MeetupCard): Promise<Buffer> {
     </g></svg>`;
   return sharp(Buffer.from(svg)).jpeg({ quality: 92 }).toBuffer();
 }
+
+/**
+ * The page behind the card: link-preview tags (title, description, picture) so iMessage can show it, and the same
+ * card in HTML for when it's opened. Everything from the plan is escaped; nothing else is on it.
+ */
+export function cardPageHtml(c: MeetupCard, imageUrl: string, pageUrl: string): string {
+  const who = c.people.map((p) => cap(p.name)).join(", ");
+  const title = `${c.place} · ${c.time}`;
+  const desc = `${cap(c.meal)}, ${c.date}. Going: ${who}`;
+  const rows = c.people
+    .map((p, i) => `<li><span class="dot" style="background:${COLORS[i % COLORS.length]}">${esc(p.name.slice(0, 1).toUpperCase())}</span><span class="nm">${esc(cap(p.name))}</span>${p.walkMin ? `<span class="walk">${p.walkMin} min walk</span>` : ""}<span class="ok">&#10003;</span></li>`)
+    .join("");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)}</title>
+<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${esc(imageUrl)}"><meta property="og:url" content="${esc(pageUrl)}"><meta name="twitter:card" content="summary_large_image">
+<style>body{margin:0;background:#0b0b0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Inter",Helvetica,Arial,sans-serif}
+main{max-width:560px;margin:0 auto;padding:28px 22px 40px;background:linear-gradient(135deg,#241238,#0b0b0f);min-height:100vh;border-top:6px solid #f97316}
+.k{color:#f97316;font-weight:800;letter-spacing:.18em;font-size:13px;text-transform:uppercase}h1{font-size:40px;line-height:1.1;margin:10px 0 18px;font-weight:800}
+.time{display:inline-block;background:#fbbf24;color:#1b1026;font-weight:800;font-size:26px;border-radius:999px;padding:8px 22px}.date{color:#d1d5db;font-size:17px;margin:10px 0 22px;font-weight:600}
+h2{color:#9ca3af;font-size:12px;letter-spacing:.2em;font-weight:800;margin:0 0 10px}ul{list-style:none;padding:0;margin:0}
+li{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.07);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.dot{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#0b0b0f;font-weight:800}.nm{font-weight:800;font-size:20px;flex:1}
+.walk{color:#9ca3af;font-size:14px;font-weight:600}.ok{background:#16a34a;color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.note{color:#9ca3af;font-size:14px;margin-top:14px}</style></head><body><main>
+<div class="k">${esc(c.meal)} &middot; it's on</div><h1>${esc(c.place)}</h1><div class="time">${esc(c.time)}</div><div class="date">${esc(c.date)}</div>
+<h2>GOING &middot; ${c.people.length}</h2><ul>${rows}</ul>${c.note ? `<p class="note">${esc(c.note)}</p>` : ""}
+</main></body></html>`;
+}

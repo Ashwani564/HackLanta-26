@@ -10,8 +10,10 @@ import { rankDishes } from "../../src/pipeline/score.js";
 import { retrieve } from "../../src/rag/retrieve.js";
 import { listRestaurants, type RestaurantSummary } from "../../src/rag/store.js";
 import type { Constraints } from "../../src/types.js";
+import { mealAt, servesMeal } from "../../src/data/cuisines.js";
 import type { PollSpec } from "./polls.js";
 import { getState, putState } from "./store.js";
+import { TIME_ZONE } from "./day.js";
 
 export type Origin = { lat: number; lng: number };
 const WALK_KM_PER_MIN = 0.08; // ~4.8 km/h, same as the backend's walking estimate
@@ -133,8 +135,17 @@ export function pickVaried<T extends { r: { cuisine: string[] }; km: number }>(n
 const priceRange = (r: RestaurantSummary) =>
   r.minPriceUsd === null || r.maxPriceUsd === null ? undefined : `$${Math.round(r.minPriceUsd)}-${Math.round(r.maxPriceUsd)}`;
 
+/** Minutes since local midnight, in the bot's time zone (Lambda runs in UTC). */
+const localMinutes = (ms = Date.now()) => {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "numeric", hour12: false }).formatToParts(new Date(ms));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return (get("hour") % 24) * 60 + get("minute");
+};
+
 export async function nearbyRestaurants(spaceId: string, origin: Origin, constraints: Constraints) {
-  const rows = await listRestaurants(constraints, ["meal"]);
+  // In the evening, coffee shops and drink counters aren't offered as places to eat.
+  const meal = mealAt(localMinutes());
+  const rows = (await listRestaurants(constraints, ["meal"])).filter((r) => servesMeal(r.restaurantId, meal));
   const ranked = rows
     .map((r) => ({ r, km: haversineKm(origin, r) }))
     .sort((a, b) => a.km - b.km)
