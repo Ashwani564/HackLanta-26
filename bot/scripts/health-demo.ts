@@ -1,11 +1,12 @@
 // Usage: tsx scripts/health-demo.ts
 // Starts the local web server with two sample meals logged for a made-up person, and prints the sync
 // link for the Apple Health shortcut (see "Apple Health sync" in the README). Press Enter to log another
-// sample meal. Nothing leaves this machine; state is in memory, so the link changes on every start.
+// sample meal and see what the phone last sent from Health. Nothing leaves this machine; state is in
+// memory, so the link changes on every start.
 import { networkInterfaces } from "node:os";
 import { createInterface } from "node:readline";
-import { logMeal } from "../src/day.js";
-import { syncTokenFor } from "../src/health.js";
+import { getDay, logMeal } from "../src/day.js";
+import { dayGoals, getMetrics, healthSummary, syncTokenFor } from "../src/health.js";
 import { startWeb } from "../src/web.js";
 
 const user = "+15550001234";
@@ -46,6 +47,13 @@ from this machine:
   curl -X POST ${local}/ack -H "content-type: application/json" -d '{"ids":["<id from pending>"]}'
   curl -X POST ${local}/metrics -H "content-type: application/json" -d '{"active_kcal":412,"steps":8042,"weight_lb":165}'
 
-press Enter to log another sample meal, Ctrl+C to stop
+press Enter to log another sample meal and show what Health sent, Ctrl+C to stop
 `);
-createInterface({ input: process.stdin }).on("line", () => void logNext());
+createInterface({ input: process.stdin }).on("line", async () => {
+  await logNext();
+  // What the read half of the shortcut has sent so far, and what the bot makes of it.
+  const day = await getDay(user);
+  const metrics = await getMetrics(day.key);
+  console.log(metrics ? `from health: ${JSON.stringify(healthSummary(day, metrics))}` : "from health: nothing yet");
+  console.log(`dish hints: ${dayGoals(day, metrics).join(", ") || "none"}`);
+});

@@ -3,7 +3,8 @@
 // from Health. Each person gets an unguessable sync token; the token in the URL is the only credential,
 // so it is never logged.
 import { randomBytes } from "node:crypto";
-import { getDayByKey, keyFor, today } from "./day.js";
+import type { Goal } from "../../src/pipeline/parse.js";
+import { getDayByKey, keyFor, today, totals, type Day, type Goals } from "./day.js";
 import { getState, putState } from "./store.js";
 
 export type PendingMeal = { id: string; name: string; calories: number; protein: number; carbs?: number; fat?: number; at: string };
@@ -132,6 +133,49 @@ export async function saveMetrics(key: string, body: Record<string, unknown>): P
 export async function getMetrics(key: string): Promise<HealthMetrics | undefined> {
   const metrics = await getState<HealthMetrics>(metricsKey(key));
   return metrics?.date === today() ? metrics : undefined;
+}
+
+// ---------- using the numbers Health sent back ----------
+
+// How much of the day's active calories counts as extra room to eat. Watches run high and a daily target
+// already assumes ordinary moving around, so half is credited and never more than MAX_ACTIVE_CREDIT.
+const ACTIVE_CREDIT = 0.5;
+const MAX_ACTIVE_CREDIT = 500;
+// Below this many calories left, lighter dishes are nudged up (a typical meal here runs 600-900).
+const LIGHT_BELOW_KCAL = 600;
+// "Behind on protein": at least this many grams still to go, making up this share of the calories left.
+const PROTEIN_GAP_G = 20;
+const PROTEIN_GAP_SHARE = 0.3;
+
+/** The day's calorie target with part of the active calories from Health added back. */
+export function adjustedCalories(goals: Goals, metrics?: HealthMetrics): number {
+  return Math.round(goals.calories + Math.min(MAX_ACTIVE_CREDIT, (metrics?.activeKcal ?? 0) * ACTIVE_CREDIT));
+}
+
+/** What the model hears about Health after a day tool. Only ever built for a one-on-one chat. */
+export function healthSummary(day: Day, metrics: HealthMetrics) {
+  return {
+    ...(metrics.activeKcal !== undefined && {
+      active_calories_burned: Math.round(metrics.activeKcal),
+      calories_left_counting_activity: adjustedCalories(day.goals, metrics) - Math.round(totals(day).calories),
+    }),
+    ...(metrics.steps !== undefined && { steps: Math.round(metrics.steps) }),
+  };
+}
+
+/**
+ * Soft ranking hints from how the person's day is going. Empty until they've logged something today (with
+ * nothing eaten there's nothing to go on). These only reorder dishes that already passed the hard filters.
+ */
+export function dayGoals(day: Day, metrics?: HealthMetrics): Goal[] {
+  if (day.meals.length === 0) return [];
+  const eaten = totals(day);
+  const left = adjustedCalories(day.goals, metrics) - eaten.calories;
+  const proteinLeft = day.goals.protein - eaten.protein;
+  const goals: Goal[] = [];
+  if (left < LIGHT_BELOW_KCAL) goals.push("low_cal");
+  if (proteinLeft >= PROTEIN_GAP_G && proteinLeft * 4 >= PROTEIN_GAP_SHARE * Math.max(left, 0)) goals.push("high_protein");
+  return goals;
 }
 
 // ---------- HTTP routes (shared by the local web server and the Lambda Function URL) ----------

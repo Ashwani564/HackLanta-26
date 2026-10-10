@@ -119,6 +119,18 @@ Leave the Date on the Log Health Sample actions empty: the meal is stamped with 
 Health → Browse → Nutrition → Dietary Energy → Show All Data. The sample meals are there with source Shortcuts.
 Run it again: nothing new is added. Press Enter in the demo, run it once more: one new entry.
 
+**Add the read half** (after the `/ack` request), so the bot knows how active the day was:
+
+6. **Find Health Samples** where Type is `Active Energy` and Start Date is today → **Calculate Statistics** (Sum) →
+   **Set Variable** `Active`. If the action offers a unit, pick `kcal`.
+7. **Find Health Samples** where Type is `Steps` and Start Date is today → **Calculate Statistics** (Sum) →
+   **Set Variable** `Steps`.
+8. **Get Contents of URL**: URL is `Text` followed by `/metrics`. Method POST, Request Body JSON, fields
+   `active_kcal` = `Active` and `steps` = `Steps`.
+
+Press Enter in the demo afterwards: it prints what arrived. The reads only work while the phone is unlocked, which
+is why they come last; a failed read can't undo or repeat the meals already written.
+
 **Share it** so the bot can hand it out. In the shortcut's details (ⓘ) → Setup, add an Import Question on the Text
 action ("Paste the link I texted you"), then Share → Copy iCloud Link. Give that link to the bot:
 
@@ -133,6 +145,11 @@ automation steps (one-on-one chats only; in a group it asks them to message it d
 makes it hands-free, and each person adds it once, since automations can't be shared by link: Shortcuts →
 Automation → New → Message → Sender: the bot → Run Immediately → Pie Sync. From then on every text from the bot
 runs the sync, which is right after they logged something and while the phone is unlocked.
+
+**What the bot does with the numbers** (one-on-one chats only, never in a group): half of the day's active calories,
+up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or
+behind on protein the dish ranking leans lighter or higher-protein. That's a nudge to the order, never a filter;
+allergy and diet filtering doesn't look at any of this. The numbers are kept for two days.
 
 ## Layout
 

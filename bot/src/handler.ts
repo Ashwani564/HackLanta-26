@@ -6,7 +6,7 @@ import { locate as realLocate } from "./findmy.js";
 import { canConvertAudio, speak, toWav, transcribe } from "./voice.js";
 import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
-import { connectHealth } from "./health.js";
+import { connectHealth, dayGoals, getMetrics, healthSummary } from "./health.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
   askDirections, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
@@ -65,7 +65,10 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     const restrictions = await mergeRestrictions(space.id, args);
     const origin = (await getState<Origin>(`loc#${space.id}`)) ?? undefined;
     const budget = typeof args.budget_usd === "number" ? args.budget_usd : undefined;
-    const out = await restaurantDishes(space.id, args, constraintsFor(restrictions, budget), origin);
+    // One-on-one, how their day is going nudges the ranking (lighter, or more protein). Never a filter, never in a group.
+    const mine = !isGroupChat(space.id) && message.sender ? await getDay(message.sender.id) : undefined;
+    const goals = mine ? dayGoals(mine, await getMetrics(mine.key)) : [];
+    const out = await restaurantDishes(space.id, { ...args, goals }, constraintsFor(restrictions, budget), origin);
     if (!out.text) return { error: out.error ?? "couldn't find that one", options: out.options };
     await sendBubbles(space, out.text);
     console.log(`  dishes: ${out.text.replace(/\n+/g, " | ")}`);
@@ -153,7 +156,9 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
               ? await setGoals(user, { calories: args.calories, protein: args.protein_g, budget: args.budget_usd })
               : await getDay(user);
         const card = await sendDayCard(space, day);
-        return { card, ...summary(day) };
+        // Numbers from Apple Health are private to the person, so only a one-on-one chat hears about them.
+        const metrics = isGroupChat(space.id) ? undefined : await getMetrics(day.key);
+        return { card, ...summary(day), ...(metrics && { health: healthSummary(day, metrics) }) };
       }
       case "connect_health": {
         if (!message.sender) return { error: "don't know who's asking" };

@@ -5,7 +5,7 @@ import { allergenConfidence } from "../../src/pipeline/allergens.js";
 import { haversineKm } from "../../src/pipeline/filter.js";
 import { pickDishes, type Pick } from "../../src/pipeline/explain.js";
 import { appleMapsUrl } from "../../src/pipeline/format.js";
-import { buildConstraints, parseMessage, type ParsedMessage } from "../../src/pipeline/parse.js";
+import { buildConstraints, parseMessage, type Goal, type ParsedMessage } from "../../src/pipeline/parse.js";
 import { rankDishes } from "../../src/pipeline/score.js";
 import { retrieve } from "../../src/rag/retrieve.js";
 import { listRestaurants, type RestaurantSummary } from "../../src/rag/store.js";
@@ -263,7 +263,7 @@ export async function directionsLink(spaceId: string): Promise<{ url?: string; n
 
 export async function restaurantDishes(
   spaceId: string,
-  args: { restaurant: string; request?: string },
+  args: { restaurant: string; request?: string; goals?: readonly Goal[] },
   constraints: Constraints,
   origin?: Origin,
 ): Promise<{ text?: string; choices?: DishChoice[]; restaurant?: string; error?: string; options?: string[] }> {
@@ -281,7 +281,8 @@ export async function restaurantDishes(
   if (candidates.length === 0) return { error: `nothing at ${place.name} matches those restrictions` };
 
   const ranked = rankDishes(candidates, {
-    goals: parsed.goal ? [parsed.goal] : [],
+    // What they asked for this time, plus the soft hints the caller passed in. All of it only reorders.
+    goals: [...new Set([...(parsed.goal ? [parsed.goal] : []), ...(args.goals ?? [])])],
     ...(constraints.budgetMaxUsd !== undefined && { budgetMaxUsd: constraints.budgetMaxUsd }),
     ...(origin && { origin }),
   });

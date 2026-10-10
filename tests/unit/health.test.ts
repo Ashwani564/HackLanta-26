@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { keyFor, logMeal } from "../../bot/src/day.js";
-import { connectHealth, getMetrics, handleHealthRequest, pendingMeals, setPublicBase, syncTokenFor } from "../../bot/src/health.js";
+import { keyFor, logMeal, type Day } from "../../bot/src/day.js";
+import {
+  adjustedCalories, connectHealth, dayGoals, getMetrics, handleHealthRequest, healthSummary, pendingMeals, setPublicBase, syncTokenFor,
+  type HealthMetrics,
+} from "../../bot/src/health.js";
 
 // No STATE_TABLE here, so store.ts keeps everything in memory. Each test uses its own person.
 let n = 0;
@@ -133,4 +136,41 @@ test("metrics from the phone are stored as numbers, in kg, and garbage is reject
   assert.equal((await call("POST", token, "metrics", { active_kcal: "lots", steps: -5 })).status, 400);
   assert.equal((await call("POST", token, "metrics", [1, 2])).status, 400);
   assert.equal((await getMetrics(keyFor(user)))?.steps, 8042); // a rejected body doesn't wipe what was there
+});
+
+// ---------- using the numbers Health sent back ----------
+
+const goals = { calories: 2000, protein: 120, budget: 40 };
+const dayWith = (...meals: { calories: number; protein: number }[]): Day => ({
+  key: "k", date: "2026-01-01", goals, meals: meals.map((m, i) => ({ name: `meal ${i}`, price: 0, at: `t${i}`, ...m })),
+});
+const burned = (activeKcal?: number, steps?: number): HealthMetrics => ({
+  date: "2026-01-01", updatedAt: "now", ...(activeKcal !== undefined && { activeKcal }), ...(steps !== undefined && { steps }),
+});
+
+test("active calories add room to the day, but only half and never more than 500", () => {
+  assert.equal(adjustedCalories(goals), 2000);
+  assert.equal(adjustedCalories(goals, burned(undefined, 9000)), 2000);
+  assert.equal(adjustedCalories(goals, burned(400)), 2200);
+  assert.equal(adjustedCalories(goals, burned(3000)), 2500);
+});
+
+test("the model hears what was burned and what's left counting it, and nothing it wasn't sent", () => {
+  const day = dayWith({ calories: 700, protein: 40 });
+  assert.deepEqual(healthSummary(day, burned(412.6, 8042)), { active_calories_burned: 413, calories_left_counting_activity: 1506, steps: 8042 });
+  assert.deepEqual(healthSummary(day, burned(undefined, 8042)), { steps: 8042 });
+});
+
+test("day hints: none until something is logged, lighter when calories run low, protein when behind", () => {
+  assert.deepEqual(dayGoals(dayWith()), []); // nothing eaten yet is no signal, even with protein to go
+  assert.deepEqual(dayGoals(dayWith({ calories: 400, protein: 30 })), []);
+  assert.deepEqual(dayGoals(dayWith({ calories: 1700, protein: 110 })), ["low_cal"]);
+  assert.deepEqual(dayGoals(dayWith({ calories: 1300, protein: 40 })), ["high_protein"]);
+  assert.deepEqual(dayGoals(dayWith({ calories: 2100, protein: 60 })), ["low_cal", "high_protein"]);
+});
+
+test("a long walk can take the 'go lighter' hint away again", () => {
+  const day = dayWith({ calories: 1700, protein: 110 });
+  assert.deepEqual(dayGoals(day, burned(200)), ["low_cal"]); // 100 credited: 400 left
+  assert.deepEqual(dayGoals(day, burned(1000)), []); // 500 credited: 800 left
 });
