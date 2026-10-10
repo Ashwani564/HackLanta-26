@@ -246,6 +246,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
 
 const destKey = (spaceId: string) => `dest#${spaceId}`;
 const dishesKey = (spaceId: string) => `dishes#${spaceId}`;
+const REPEAT_WINDOW_MS = 5 * 60_000;
 
 export interface DishChoice {
   label: string;
@@ -266,7 +267,7 @@ export async function restaurantDishes(
   args: { restaurant: string; request?: string },
   constraints: Constraints,
   origin?: Origin,
-): Promise<{ text?: string; choices?: DishChoice[]; restaurant?: string; error?: string; options?: string[] }> {
+): Promise<{ text?: string; choices?: DishChoice[]; restaurant?: string; error?: string; options?: string[]; repeat?: boolean }> {
   const place = await resolveRestaurant(spaceId, args.restaurant, constraints);
   if (!place) {
     const offered = (await getState<NearbyEntry[]>(nearKey(spaceId))) ?? [];
@@ -274,6 +275,12 @@ export async function restaurantDishes(
   }
 
   const request = (args.request ?? "").trim();
+
+  // Same restaurant, nothing new asked, picks sent a moment ago: don't send them again. (A vague "sure" after the
+  // picks used to make the model call this again and repeat the whole message.)
+  const recent = await getState<{ restaurant: string; at?: number }>(dishesKey(spaceId));
+  if (!request && recent?.restaurant === place.name && recent.at && Date.now() - recent.at < REPEAT_WINDOW_MS) return { repeat: true };
+
   const parsed = request ? await parseMessage(request) : EMPTY_PARSE;
   const query = parsed.positiveQuery || request || "popular main dish";
   let { candidates } = await retrieve(query, constraints, { kinds: ["meal"], restaurantId: place.id, limit: 25 });
@@ -296,7 +303,7 @@ export async function restaurantDishes(
     calories: p.dish.calories,
     proteinG: p.dish.proteinG,
   }));
-  await putState(dishesKey(spaceId), { restaurant: place.name, choices }, 3 * 3600);
+  await putState(dishesKey(spaceId), { restaurant: place.name, choices, at: Date.now() }, 3 * 3600);
   return { text: composeDishMessage(place.name, picks, constraints), choices, restaurant: place.name };
 }
 

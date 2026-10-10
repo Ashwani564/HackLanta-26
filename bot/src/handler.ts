@@ -65,6 +65,9 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     const origin = (await getState<Origin>(`loc#${space.id}`)) ?? undefined;
     const budget = typeof args.budget_usd === "number" ? args.budget_usd : undefined;
     const out = await restaurantDishes(space.id, args, constraintsFor(restrictions, budget), origin);
+    if (out.repeat) {
+      return { already_sent: true, note: "you sent these dishes a moment ago and the poll is still up. don't send them again: nudge them to tap one (or type which they want), or reply NO_REPLY" };
+    }
     if (!out.text) return { error: out.error ?? "couldn't find that one", options: out.options };
     await sendBubbles(space, out.text);
     console.log(`  dishes: ${out.text.replace(/\n+/g, " | ")}`);

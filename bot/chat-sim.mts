@@ -57,6 +57,7 @@ const scripts: Record<string, string[]> = {
   "polls-skip": ["im starving"],
   typed: ["hungry", "queen tea", "the beef rice", "yeah"],
   friend: ["Need a place to eat with my friend", "hey"],
+  repeat: ["hungry", "queen tea", "queen tea", "sure", "which one is cheaper"],
   group: ["anyone want tacos", "other: lol i'm so tired", "hey bot im hungry", "queen tea", "other: i'm good", "ok thanks"],
   price: ["hungry", "mr fries man", "strikeout wingz", "mangos", "stir house", "saxbys", "starbucks"],
   allergy: ["im allergic to peanuts, need something to eat", "india eats", "something spicy"],
