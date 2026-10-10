@@ -4,10 +4,15 @@ Build the GSU on-campus restaurant/dish dataset with Apify, then write a CSV and
 Pipeline
   1. Google Maps Scraper (compass/crawler-google-places) -> address, place_id, lat/lng, price_level
   2. Uber Eats menu actor (one run per store URL)         -> dish_name, description, price_usd, category
-  3. chains_nutrition.csv (you fill it from the chains' official PDFs/charts)
+  3. chains_nutrition.csv (from the chains' official PDFs/charts)
                                                           -> calories, macros, allergens  (allergen_source=chart)
-  4. Text pass over dish name + description              -> allergens (menu_text if stated, else inferred), diet_tags
-  5. Write gsu_dishes.csv, optionally upload to S3
+  4. estimated_nutrition.csv (typical values for dishes with no official data; see its `basis` column)
+                                                          -> calories, macros, allergens  (allergen_source=estimated)
+  5. Text pass over dish name + description              -> allergens (menu_text if stated, else inferred), diet_tags
+  6. Write gsu_dishes.csv, optionally upload to S3
+
+Restaurants with no Uber Eats URL get their dishes straight from the two nutrition files.
+Scrapes are cached in cache/; run with --refresh to scrape again (costs Apify credits).
 
 Setup
   pip install -r requirements.txt
@@ -19,9 +24,12 @@ Setup
 Fill in the Uber Eats store URLs below first (search ubereats.com with an address near GSU and copy the /store/ URL).
 """
 import csv
+import json
 import math
 import os
 import re
+import sys
+import unicodedata
 from datetime import datetime, timezone
 
 from apify_client import ApifyClient
@@ -58,19 +66,26 @@ RESTAURANTS = [
     ("starbucks",       "Starbucks",                   "Starbucks Georgia State University",     ""),
 ]
 
-CHART_FILE = "chains_nutrition.csv"   # restaurant_id,dish_name,calories,protein_g,carbs_g,fat_g,sodium_mg,allergens
+# Both nutrition files share these columns:
+#   restaurant_id,dish_name,calories,protein_g,carbs_g,fat_g,sodium_mg,allergens,diet_tags,
+#   match_category (only apply to this Uber Eats section), category/description/price_usd (used when the
+#   restaurant has no Uber Eats menu), basis (where the numbers come from)
+CHART_FILE = "chains_nutrition.csv"        # official figures published by the chain
+ESTIMATE_FILE = "estimated_nutrition.csv"  # typical values, NOT published by the restaurant
+CACHE_DIR = "cache"
 OUT_FILE = "gsu_dishes.csv"
 
 COLUMNS = [
     "restaurant_id", "restaurant_name", "place_id", "lat", "lng", "price_level",
     "dish_id", "dish_name", "description", "price_usd", "category",
-    "calories", "protein_g", "carbs_g", "fat_g", "sodium_mg",
+    "calories", "protein_g", "carbs_g", "fat_g", "sodium_mg", "nutrition_source",
     "allergens", "allergen_source", "diet_tags", "scraped_at",
 ]
 
 # ---------------------------------------------------------------- helpers
 def slug(s):
-    return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()  # Caffè -> caffe
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
 def norm(s):
@@ -240,28 +255,97 @@ def scrape_menu(client, url):
     return out
 
 
-# ---------------------------------------------------------------- main
-def load_chart():
-    if not os.path.exists(CHART_FILE):
+# ---------------------------------------------------------------- nutrition files
+NUTRIENTS = ("calories", "protein_g", "carbs_g", "fat_g", "sodium_mg")
+
+
+def load_chart(path):
+    """-> {(restaurant_id, dish, match_category): row}; match_category "" applies to any section."""
+    if not os.path.exists(path):
         return {}
-    with open(CHART_FILE, newline="", encoding="utf-8") as f:
-        return {(r["restaurant_id"], norm(r["dish_name"])): r for r in csv.DictReader(f)}
+    with open(path, newline="", encoding="utf-8") as f:
+        return {(r["restaurant_id"], norm(r["dish_name"]), norm(r.get("match_category"))): r
+                for r in csv.DictReader(f)}
+
+
+def chart_lookup(chart, row):
+    key = (row["restaurant_id"], norm(row["dish_name"]))
+    return chart.get((*key, norm(row["category"]))) or chart.get((*key, ""))
+
+
+def chart_dishes(rid, *charts):
+    """Dishes for a restaurant with no Uber Eats menu come straight from the nutrition files."""
+    seen = set()
+    for chart in charts:
+        for (r, dish, _), c in chart.items():
+            if r == rid and dish not in seen:
+                seen.add(dish)
+                item = {"description": c.get("description", ""), "price": c.get("price_usd", "")}
+                yield c.get("category", ""), item, c["dish_name"]
+
+
+def add_nutrition(row, official, estimates):
+    """Official chart wins over everything; estimates come next; otherwise only the menu text is used."""
+    text = f"{row['dish_name']} {row['description']}"
+    found, source = allergens_from_text(text)
+    tags = set(diet_tags_from_text(text))
+    row["nutrition_source"] = ""
+    c, e = chart_lookup(official, row), chart_lookup(estimates, row)
+    if c:
+        for k in NUTRIENTS:
+            row[k] = c.get(k, "") or row[k]
+        row["nutrition_source"] = "official" if c.get("calories") else ""
+        # allergen_source in the chart: blank = the chain's allergen statement, "ingredients" = read off its
+        # ingredient list, "unknown" = the chain publishes neither, so keep what the menu text gives
+        if c.get("allergen_source") != "unknown":
+            found, source = (c.get("allergens") or "").split("|"), c.get("allergen_source") or "chart"
+        tags |= set((c.get("diet_tags") or "").split("|"))
+    elif e:
+        for k in NUTRIENTS:
+            row[k] = e.get(k, "") or row[k]
+        row["nutrition_source"] = "estimated" if e.get("calories") else ""
+        # keep anything the menu text names on top of the estimate; both are lower bounds
+        found, source = set(found) | set((e.get("allergens") or "").split("|")), "estimated"
+        tags |= set((e.get("diet_tags") or "").split("|"))
+    row["allergens"] = "|".join(sorted(a for a in found if a))
+    row["allergen_source"] = source
+    row["diet_tags"] = "|".join(t for t in DIET_PATTERNS if t in tags)
+
+
+# ---------------------------------------------------------------- main
+def cached(name, fetch, refresh):
+    """-> (data, scraped_at). Scrapes cost credits, so results are kept in cache/ until --refresh."""
+    path = os.path.join(CACHE_DIR, f"{name}.json")
+    if not refresh and os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        return saved["data"], saved["scraped_at"]
+    saved = {"scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "data": fetch()}
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(saved, f)
+    return saved["data"], saved["scraped_at"]
 
 
 def main():
-    client = ApifyClient(os.environ["APIFY_TOKEN"])
-    scraped_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    places = scrape_places(client)
-    chart = load_chart()
+    refresh = "--refresh" in sys.argv
+    client = ApifyClient(os.environ.get("APIFY_TOKEN"))
+    built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    places, _ = cached("places", lambda: scrape_places(client), refresh)
+    official, estimates = load_chart(CHART_FILE), load_chart(ESTIMATE_FILE)
     rows = []
 
     for rid, name, _, url in RESTAURANTS:
         place = places.get(rid, {})
-        if not url:
-            print(f"[menu] {name}: no Uber Eats URL yet, skipping menu")
-            continue
+        if url:
+            menu, scraped_at = cached(f"menu_{rid}", lambda: scrape_menu(client, url), refresh)
+        else:
+            menu, scraped_at = list(chart_dishes(rid, official, estimates)), built_at
+            if not menu:
+                print(f"[menu] {name}: no Uber Eats URL and nothing in the nutrition files, skipping")
+                continue
         seen = {}
-        for section, it, dish in scrape_menu(client, url):
+        for section, it, dish in menu:
             desc = (it.get("description") or it.get("itemDescription") or "").strip()
             text = f"{dish} {desc}"
             base = f"{rid}__{slug(dish)}"
@@ -277,20 +361,9 @@ def main():
                 "category": section,
                 "calories": calories_from(it, text),
                 "protein_g": "", "carbs_g": "", "fat_g": "", "sodium_mg": "",
-                "diet_tags": "|".join(diet_tags_from_text(text)),
                 "scraped_at": scraped_at,
             }
-
-            c = chart.get((rid, norm(dish)))
-            if c:  # official chart wins over everything
-                for k in ("calories", "protein_g", "carbs_g", "fat_g", "sodium_mg"):
-                    row[k] = c.get(k, "") or row[k]
-                row["allergens"] = c.get("allergens", "")
-                row["allergen_source"] = "chart"
-            else:
-                found, source = allergens_from_text(text)
-                row["allergens"] = "|".join(found)
-                row["allergen_source"] = source
+            add_nutrition(row, official, estimates)
             rows.append(row)
         print(f"[menu] {name}: {seen and sum(seen.values())} dishes")
 
