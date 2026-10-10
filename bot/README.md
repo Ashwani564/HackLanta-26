@@ -94,6 +94,95 @@ secret as `webhookSecret` (see `src/lambda.ts`). Don't run the local bot and the
 
 Try the conversation without iMessage: `npx tsx --env-file=.env chat-sim.mts polls` (fakes Find My and poll taps; Bedrock and the database are real).
 
+## Apple Health sync
+
+Apple Health has no cloud API, so a Shortcut on the person's iPhone does the syncing. It calls three routes on the
+bot (`src/health.ts`), authenticated by a per-person token in the path:
+
+```
+GET  /health/<token>            the person's setup page (their sync link, opened in a browser)
+GET  /health/<token>/status     { synced_at }  when the phone last synced; the setup page polls this
+GET  /health/<token>/pending    meals logged in chat today that aren't in Health yet
+POST /health/<token>/ack        { ids }  mark those meals as written
+POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  numbers read from Health
+```
+
+**Try it against your laptop** (phone and laptop on the same Wi-Fi; allow Node through the firewall if asked):
+
+```bash
+npx tsx scripts/health-demo.ts     # logs two sample meals, prints the sync link; Enter logs another
+```
+
+Open the printed link in Safari on the phone: it's the setup page, with a Copy button for the link itself.
+
+**Build the "Pie Sync" shortcut** (Shortcuts app → + → name it Pie Sync):
+
+1. **Text**: paste the sync link (everything up to and including the token, no trailing slash).
+2. **Get Contents of URL**: URL is the `Text` variable followed by `/pending`. Method GET.
+3. **Get Dictionary Value**: Get `Value` for `meals` in `Contents of URL`.
+4. **Repeat with Each** item in `Dictionary Value`. Inside the loop:
+   - **Log Health Sample**: Type `Dietary Energy`, Unit `kcal`, Value = `Repeat Item` (tap it → Get Value for Key `calories`).
+   - **Log Health Sample**: Type `Protein`, Unit `g`, Value = `Repeat Item` → key `protein`.
+   - **If** `Repeat Item` → key `carbs` *has any value*: **Log Health Sample**, Type `Carbohydrates`, Unit `g`, that value. End If.
+   - **If** `Repeat Item` → key `fat` *has any value*: **Log Health Sample**, Type `Total Fat`, Unit `g`, that value. End If.
+   - **Add to Variable**: add `Repeat Item` → key `id` to a variable named `Synced`.
+5. After End Repeat, **Get Contents of URL**: URL is `Text` followed by `/ack`. Method POST, Request Body JSON, one
+   Text field `ids` = the `Synced` variable.
+
+Each Log Health Sample must use the value from the step **directly above it**. Every one of them shows as
+"Dictionary Value" in the editor, so it is easy to pick the wrong one (the `id`, say) and log a wrong number: choose
+Select Variable and tap the bubble under the right step. The demo's sample meals carry carbs and fat so a mistake
+shows up in Health → Nutrition → Carbohydrates and Total Fat (42 g and 9 g for the first meal).
+
+Leave the Date on the Log Health Sample actions empty: the meal is stamped with the time the shortcut runs.
+`carbs` and `fat` are missing from a meal when nobody estimated them, which is why those two sit inside an If.
+
+**Check it**: run the shortcut, allow the connection and the Health write access it asks for, then open
+Health → Browse → Nutrition → Dietary Energy → Show All Data. The sample meals are there with source Shortcuts.
+Run it again: nothing new is added. Press Enter in the demo, run it once more: one new entry.
+
+**Add the read half** (after the `/ack` request), so the bot knows how active the day was:
+
+6. **Find Health Samples** where Type is `Active Energy` and Start Date is today → **Calculate Statistics** (Sum) →
+   **Set Variable** `Active`. If the action offers a unit, pick `kcal`.
+7. **Find Health Samples** where Type is `Steps` and Start Date is today → **Calculate Statistics** (Sum) →
+   **Set Variable** `Steps`.
+8. **Get Contents of URL**: URL is `Text` followed by `/metrics`. Method POST, Request Body JSON, fields
+   `active_kcal` = `Active` and `steps` = `Steps`.
+
+Press Enter in the demo afterwards: it prints what arrived. The reads only work while the phone is unlocked, which
+is why they come last; a failed read can't undo or repeat the meals already written.
+
+**Share it** so the bot can hand it out. In the shortcut's details (ⓘ) → Setup, add an Import Question on the Text
+action ("Paste the link I texted you"), then Share → Copy iCloud Link. Keep the name `Pie Sync`: the setup page's
+buttons run it by name. Editing a shared shortcut does not change the old link; copy a new one. Give the link to the bot:
+
+```bash
+HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # stored on the stack; later deploys keep it
+```
+
+Locally, put `HEALTH_SHORTCUT_URL` and `PUBLIC_URL` (the address phones reach this machine on) in `.env`.
+
+**In chat**: "connect apple health" makes the bot text the person their private sync link (one-on-one chats only;
+in a group it asks them to message it directly). Opened in a browser, that link is a setup page:
+
+1. **Add the shortcut**: one tap copies their link and opens the prebuilt shortcut; they paste when Shortcuts asks.
+2. **Test it**: runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
+   The bot also texts them once to say it worked. The button then becomes **Sync now**.
+3. **Make it automatic** (optional): Shortcuts → Automation → New → Message → Sender: the bot → Run Immediately →
+   Pie Sync. Automations can't be shared by link, so each person adds this once. From then on every text from the
+   bot runs the sync, which is right after they logged something and while the phone is unlocked.
+
+**What the bot does with the numbers** (one-on-one chats only, never in a group): half of the day's active calories,
+up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or
+behind on protein the dish ranking leans lighter or higher-protein. That's a nudge to the order, never a filter;
+allergy and diet filtering doesn't look at any of this. The numbers are kept for two days.
+
+**Health Auto Export instead of the read half**: that App Store app can send the same numbers on a schedule, with
+no shortcut actions to build. In it: Automations → New Automation → REST API, URL `<sync link>/metrics`, Data Type
+Health Metrics (select only Active Energy and Step Count), Export Format JSON, Summarize Data on, Date Range Today.
+It only reads; writing meals into Health still needs the shortcut.
+
 ## Layout
 
 ```
@@ -112,10 +201,11 @@ bot/
 │   ├── vision.ts     # food photo: Claude finds items + calories (grid-assisted boxes), optional SAM 2 masks
 │   ├── voice.ts      # Polly + Transcribe (ElevenLabs optional)
 │   ├── day.ts, card.ts, day-art.ts, plan.ts, web.ts   # calorie tracking cards and dashboard
+│   ├── health.ts     # Apple Health sync routes: sync tokens, pending meals, acks, numbers from Health
 │   ├── store.ts      # DynamoDB in Lambda, in-memory locally
 │   ├── secrets.ts    # Photon credentials from Secrets Manager
 │   └── invite.ts     # contact-card invites, STOP opt-out
-├── scripts/          # deploy-lambda.sh, send.ts, card/plan demos
+├── scripts/          # deploy-lambda.sh, send.ts, card/plan/health demos
 ├── vision-server/    # optional SAM 2 service (npm run vision)
 └── chat-sim.mts      # local conversation simulator
 ```

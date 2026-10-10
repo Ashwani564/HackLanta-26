@@ -17,6 +17,9 @@ export async function rememberBaseUrl(domainName: string | undefined): Promise<v
   await putState(BASE_KEY, base);
 }
 
+/** Our public URL, if a request has taught it to us yet. */
+export const baseUrl = async () => knownBase ?? (await getState<string>(BASE_KEY));
+
 const TOKEN = /^[A-Za-z0-9_-]{8,40}$/;
 export const isCardToken = (s: string) => TOKEN.test(s);
 

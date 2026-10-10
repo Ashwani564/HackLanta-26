@@ -6,6 +6,7 @@ import { locate as realLocate } from "./findmy.js";
 import { canConvertAudio, speak, toWav, transcribe } from "./voice.js";
 import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
+import { connectHealth, dayGoals, getMetrics, healthSummary } from "./health.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
   askDirections, markAskedDirections, takeDirectionsAnswer, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
@@ -82,7 +83,10 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     const restrictions = await restrict(args);
     const origin = (await getState<Origin>(`loc#${space.id}`)) ?? undefined;
     const budget = budgetFor(args.budget_usd);
-    const out = await restaurantDishes(space.id, args, constraintsFor(restrictions, budget), origin);
+    // One-on-one, how their day is going nudges the ranking (lighter, or more protein). Never a filter, never in a group.
+    const mine = !isGroupChat(space.id) && message.sender ? await getDay(message.sender.id) : undefined;
+    const goals = mine ? dayGoals(mine, await getMetrics(mine.key)) : [];
+    const out = await restaurantDishes(space.id, { ...args, goals }, constraintsFor(restrictions, budget), origin);
     if (out.repeat) {
       return { already_sent: true, note: "you sent these dishes a moment ago and the poll is still up. don't send them again: nudge them to tap one (or type which they want), or reply NO_REPLY" };
     }
@@ -171,13 +175,24 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
                 name: args.name,
                 calories: args.calories,
                 protein: args.protein_g,
+                ...(typeof args.carbs_g === "number" && args.carbs_g >= 0 && { carbs: args.carbs_g }),
+                ...(typeof args.fat_g === "number" && args.fat_g >= 0 && { fat: args.fat_g }),
                 price: args.price_usd ?? 0,
               })
             : name === "set_goals"
               ? await setGoals(user, { calories: args.calories, protein: args.protein_g, budget: args.budget_usd })
               : await getDay(user);
         const card = await sendDayCard(space, day);
-        return { card, ...summary(day) };
+        // Numbers from Apple Health are private to the person, so only a one-on-one chat hears about them.
+        const metrics = isGroupChat(space.id) ? undefined : await getMetrics(day.key);
+        return { card, ...summary(day), ...(metrics && { health: healthSummary(day, metrics) }) };
+      }
+      case "connect_health": {
+        if (!message.sender) return { error: "don't know who's asking" };
+        const out = await connectHealth(message.sender.id, isGroupChat(space.id));
+        if ("error" in out) return out;
+        await sendBubbles(space, out.text);
+        return { sent: true, sent_text: out.said };
       }
       case "get_location": {
         if (message.platform !== "imessage" || !message.sender) return { error: "location only works over iMessage" };

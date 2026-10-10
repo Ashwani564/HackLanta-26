@@ -1,12 +1,18 @@
-// Tiny web server for the page that opens when someone taps the day card.
-import { createServer } from "node:http";
+// Tiny web server for the page that opens when someone taps the day card, and the Apple Health sync routes.
+import { createServer, type IncomingMessage } from "node:http";
 import { dayJpeg } from "./day-art.js";
 import { TIME_ZONE, getDayByKey, totals, type Day } from "./day.js";
+import { handleHealthRequest, healthReply, isHealthPath } from "./health.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
 export function startWeb() {
   createServer(async (req, res) => {
+    if (isHealthPath(req.url ?? "")) {
+      const out = healthReply(await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req)));
+      res.writeHead(out.status, out.headers).end(out.text);
+      return;
+    }
     const m = req.url?.match(/^\/day\/([0-9a-f]{12})(\/pie\.jpg)?(?:\?.*)?$/);
     const day = m ? await getDayByKey(m[1]!) : undefined;
     if (!day) {
@@ -19,6 +25,18 @@ export function startWeb() {
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(page(day));
   }).listen(PORT, () => console.log(`day dashboard on http://localhost:${PORT}`));
+}
+
+/** Request body as text. Sync bodies are tiny; anything oversized is treated as empty (and rejected as bad JSON). */
+async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) return "";
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function page(day: Day) {

@@ -184,10 +184,20 @@ allergens, allergen_source, diet_tags, scraped_at
 
 Ask at most 3 things: allergies/restrictions, goal, usual budget. Everything else is per request. "update my profile" works any time.
 
+## Apple Health sync
+
+Apple Health has no cloud API. A Shortcut on the person's iPhone calls `/health/<token>/...` on the bot (`bot/src/health.ts`; recipe in `bot/README.md`).
+
+- **Out to Health:** meals logged in chat (calories, protein, carbs, fat). A missing value is left out, never sent as 0.
+- **In from Health:** today's active calories and steps, nothing else, kept 2 days. No clinical records, no conditions.
+- **Health data never touches allergen or diet filtering.** It only adjusts the "calories left" talk and the soft goal ranking. Allergies stay chat-collected.
+- **1:1 only.** Health numbers are never used or mentioned in a group chat (rule 2).
+- **The sync link is a credential.** Send it only in a 1:1 chat; never log it, never put it in chat history or a model prompt.
+
 ## Environment / secrets
 
 - Secrets Manager: `photon/project-secret`, `google/maps-key`.
-- Env vars: `PHOTON_PROJECT_ID`, `BEDROCK_MODEL_ID`, `CATALOG_S3_URI`, `AWS_REGION`, table names.
+- Env vars: `PHOTON_PROJECT_ID`, `BEDROCK_MODEL_ID`, `CATALOG_S3_URI`, `AWS_REGION`, table names, `HEALTH_SHORTCUT_URL` (iCloud link of the shared shortcut; unset means Health sync is off).
 - Google key restricted to Routes, Geocoding, Places APIs. Billing budget alert set.
 
 ## Testing
@@ -197,7 +207,7 @@ Ask at most 3 things: allergies/restrictions, goal, usual budget. Everything els
 
 ## Out of scope (for the hackathon)
 
-Ordering/payments, DoorDash, Apple Health, storing medical data, nationwide coverage, vector search/embeddings. Demo covers one neighborhood.
+Ordering/payments, DoorDash, Apple Health clinical records (allergies, conditions, medications) and any other medical data, nationwide coverage, vector search/embeddings. Demo covers one neighborhood.
 
 ## Working style for Claude
 

@@ -31,7 +31,7 @@ how you text:
 
 what you can do:
 - food: when they say they're hungry, want to eat, ask where/what to eat, or ask for a poll or suggestions of places to eat, start the flow below immediately with get_location. don't ask them what the options are or where they are first. you never guess where someone is and you never ask them to type their location.
-- you can make polls, send voice notes, track their calories, and read photos of food (photos are handled automatically).
+- you can make polls, send voice notes, track their calories, sync what they eat to apple health, and read photos of food (photos are handled automatically).
 - you can be added to group chats; say yes if asked. never claim limits you weren't told about.
 
 the food flow, in order:
@@ -49,8 +49,10 @@ other tools:
 - plan_meal: when they ask you to schedule, plan, figure out or set up a meal with other people ("schedule dinner today with ashwani and princy", "i'm gonna grab dinner with x and y, can you figure out the time and place", or a follow-up like "can you text them"). you CAN text people, this tool is how, so never say you can't text them or tell them to message their friends themselves. if they said "my friends" without names, ask who in one short text. you text each of those people separately, work out a time and a place together, and message this person once it's settled. pass the first names as they said them, the meal, and the day (today unless they said tomorrow); if they named a time ("at 7", "around noon"), pass time; if they said any time works, pass anytime true; if they gave a range ("after 7"), pass earliest_hour or latest_hour (24h). if they gave none of those, still call it: it texts them "what time are you thinking?" itself and comes back with asking_time true, so reply with exactly NO_REPLY. otherwise reply with one casual line like "on it, texting ashwani and princy, i'll ping you once it's sorted". if not_found or ambiguous comes back, say who you couldn't find (they have to be added first: share their contact card with you). if it says it's too late, say so and offer tomorrow or the next meal (and when they pick one, call plan_meal again with the same people). only say you're texting people if plan_meal actually came back started; never claim it otherwise.
 - create_poll: when the group wants to vote on something. pick 2-5 concrete options yourself if they don't give any. if they ask for a poll about where to eat, that's the food flow above (the spots poll goes out by itself), not create_poll.
 - send_voice_note: only when they ask for a voice reply or sent you a voice note.
-- log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein and price. don't log things they're only thinking about.
+- log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein, carbs, fat and price. don't log things they're only thinking about.
 - show_day / set_goals: how their day is going; their calorie, protein or budget targets. these send a "today's pie" card, so just add a few words.
+- when one of those results has a "health" part, it's from their apple health today (calories burned moving around, steps). always say one short thing about it (so not NO_REPLY), like "you've burned about 400 so there's a bit more room". it's an estimate, so keep it loose and don't recite every number.
+- connect_health: when they ask to connect, link or sync apple health. it sends the setup steps itself, so reply NO_REPLY after it. if it comes back with an error, tell them that plainly. never write a setup link or steps yourself.
 if a tool already sent everything the person needs to see, reply with exactly NO_REPLY and nothing else.`;
 
 export const VOICE_PROMPT = "I sent you a voice note. Respond to what I said, and reply with a voice note. Transcript:";
@@ -175,10 +177,19 @@ const TOOLS: Tool[] = [
           name: { type: "string", description: "Dish name" },
           calories: { type: "number", description: "Estimated kcal" },
           protein_g: { type: "number", description: "Estimated grams of protein" },
+          carbs_g: { type: "number", description: "Estimated grams of carbohydrates" },
+          fat_g: { type: "number", description: "Estimated grams of fat" },
           price_usd: { type: "number", description: "Price if known or typical, else 0" },
         },
-        required: ["name", "calories", "protein_g"],
+        required: ["name", "calories", "protein_g", "carbs_g", "fat_g"],
       }),
+    },
+  },
+  {
+    toolSpec: {
+      name: "connect_health",
+      description: "Sends the sender the steps and their private link to sync logged meals to Apple Health.",
+      inputSchema: schema({ type: "object", properties: {} }),
     },
   },
   {

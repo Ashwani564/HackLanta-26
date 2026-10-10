@@ -24,7 +24,9 @@ npm install --prefix "$OUT" --no-save --no-audit --no-fund --omit=dev --os=linux
   "nice-grpc@$(ver nice-grpc)" "nice-grpc-common@$(ver nice-grpc-common)" "@grpc/grpc-js@$(ver @grpc/grpc-js)" >/dev/null
 # Fonts for the plan card: Lambda has none, so text would render as boxes. Read by src/meetup-card.ts from ./fonts.
 cp -R assets/fonts "$OUT/fonts"
-(cd "$OUT" && rm -f ../lambda.zip && zip -qr ../lambda.zip .)
+# Git Bash on Windows has no zip; Windows' own tar (bsdtar) writes zip files.
+if command -v zip >/dev/null; then (cd "$OUT" && rm -f ../lambda.zip && zip -qr ../lambda.zip .)
+else (cd "$OUT" && rm -f ../lambda.zip && "$SYSTEMROOT/System32/tar.exe" -a -cf ../lambda.zip *); fi
 echo "    $(du -h dist/lambda.zip | cut -f1) dist/lambda.zip"
 
 if [[ "${1:-}" != "--code" ]]; then
@@ -40,7 +42,8 @@ if [[ "${1:-}" != "--code" ]]; then
   [[ -z "$FFMPEG_LAYER" ]] && echo "    (no ffmpeg layer yet: voice notes stay off. Run scripts/build-ffmpeg-layer.sh)"
   aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file ../infra/bot-lambda.yaml \
     --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
-    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER"
+    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER" \
+    ${HEALTH_SHORTCUT_URL:+"HealthShortcutUrl=$HEALTH_SHORTCUT_URL"}  # only when set, so a plain deploy keeps the stored link
 fi
 
 echo "==> uploading code"

@@ -21,3 +21,6 @@ __pycache__/
 # graphify: share only graph.json + GRAPH_REPORT.md (force-added); keep local state out
 graphify-out/
 *.graphify-bak
+
+# Claude plans
+.claude/plans/
