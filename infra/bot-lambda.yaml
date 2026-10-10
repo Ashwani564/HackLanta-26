@@ -74,7 +74,7 @@ Resources:
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${PhotonSecretName}-*
               - Sid: State
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem]
                 Resource: !GetAtt StateTable.Arn
               - Sid: Speech
                 Effect: Allow
