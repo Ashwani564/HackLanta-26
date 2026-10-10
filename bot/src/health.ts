@@ -62,7 +62,7 @@ const shortcutLink = () => {
 export function connectText(syncLink: string): string {
   return [
     "ok let's hook me up to apple health, takes a minute",
-    "open this and do the three steps. it's your private link, so don't pass it on",
+    "open this and follow the steps. it's your private link, so don't pass it on",
     syncLink,
     "after that whatever you log with me shows up in health",
   ].join("\n\n");
@@ -197,14 +197,21 @@ export function dayGoals(day: Day, metrics?: HealthMetrics): Goal[] {
 
 // ---------- HTTP routes (shared by the local web server and the Lambda Function URL) ----------
 
-/** `html` is set for the setup page; everything else answers with `body` as JSON. */
-export type HealthResponse = { status: number; body?: unknown; html?: string };
+/** `html` is set for the setup page; everything else answers with `body` as JSON. `route` is for the log line. */
+export type HealthResponse = { status: number; body?: unknown; html?: string; route?: string };
 
 const ROUTE = /^\/health\/([A-Za-z0-9_-]{16,64})(?:\/(pending|ack|metrics|status))?\/?$/;
 const METHODS = { setup: "GET", status: "GET", pending: "GET", ack: "POST", metrics: "POST" } as const;
 
-/** Things the routes can set off that need the running bot (only the Lambda has one to hand). */
-export type HealthHooks = { onFirstSync?: (userId: string) => Promise<unknown> | unknown };
+type Route = keyof typeof METHODS;
+
+/** Who is asking (from the request headers), and what the routes can set off that needs the running bot. */
+export type HealthContext = { accept?: string; userAgent?: string; onFirstSync?: (userId: string) => Promise<unknown> | unknown };
+
+// A browser asks for HTML and calls itself Mozilla; the Shortcuts app does neither. With no headers at all
+// (a direct call) the bare link stays the page.
+const isBrowser = (c: HealthContext) =>
+  (c.accept === undefined && c.userAgent === undefined) || /text\/html/i.test(c.accept ?? "") || /mozilla/i.test(c.userAgent ?? "");
 
 export const isHealthPath = (path: string) => path.startsWith("/health/");
 
@@ -229,7 +236,7 @@ export const CONNECTED_TEXT = "ok you're connected. whatever you log with me sho
 export function setupPage(shortcutUrl: string | undefined): string {
   const add = shortcutUrl
     ? `<a class="btn" id="add" href="${esc(shortcutUrl)}">Add the Pie Sync shortcut</a>
-<small>Your link is copied when you tap. Paste it when Shortcuts asks for it.</small>`
+<small>Shortcuts asks for your link: press and hold the box, tap Paste, then Add Shortcut.</small>`
     : `<small>The shortcut hasn't been published for this bot yet.</small>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Connect Apple Health</title><style>
@@ -242,13 +249,14 @@ ul{margin:8px 0;padding-left:20px;color:#7A4E2D;font-size:14px;line-height:1.6}
 input{width:100%;box-sizing:border-box;margin:12px 0 6px;padding:8px;border:2px solid #E4CBA8;border-radius:10px;background:#fff;font:12px ui-monospace,monospace;color:#2B1B17}
 button,.btn{display:inline-block;margin-top:6px;padding:10px 16px;border:0;border-radius:10px;background:#C0392B;color:#fff;font:600 16px -apple-system,system-ui,sans-serif;text-decoration:none}
 .quiet{background:none;color:#C0392B;border:2px solid #C0392B;padding:6px 12px;font-size:14px}
-#status{margin:10px 0 0;font-weight:600}#status.ok{color:#1E7B3C}
+#status{margin:10px 0 0;font-weight:600}#status.ok{color:#1E7B3C}.done{background:#1E7B3C}
 </style></head><body>
 <h1>CONNECT APPLE HEALTH</h1><p>About a minute. After this, meals you log in chat show up in Health.</p>
 <ol>
-<li><b>Add the shortcut</b><br>${add}
-<input id="link" readonly aria-label="Your private link"><button id="copy" class="quiet">Copy my link</button>
-<small>Only needed if paste comes up empty. The link is private to you, so don't share it.</small></li>
+<li><b>Copy your link</b><br><button id="copy">Copy my link</button>
+<input id="link" readonly aria-label="Your private link">
+<small>It's private to you, so don't share it.</small></li>
+<li><b>Add the shortcut</b><br>${add}</li>
 <li><b>Test it</b><br><a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test it</a>
 <small>Say yes when it asks to connect and to use Health, then come back to this page.</small>
 <p id="status">Not connected yet.</p></li>
@@ -262,11 +270,23 @@ const path = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : 
 const link = location.origin + path;
 const $ = (id) => document.getElementById(id);
 $("link").value = link;
+// Copying is its own step, and says whether it worked: a copy that fails quietly means the wrong thing
+// gets pasted into the shortcut, which then calls the wrong address.
 const copy = async () => {
-  try { await navigator.clipboard.writeText(link); } catch { $("link").select(); document.execCommand("copy"); }
+  try { await navigator.clipboard.writeText(link); return true; } catch {}
+  const box = $("link");
+  let ok = false;
+  box.readOnly = false; box.focus(); box.setSelectionRange(0, link.length);
+  try { ok = document.execCommand("copy"); } catch {}
+  box.readOnly = true; box.blur();
+  return ok;
 };
-$("copy").onclick = async () => { await copy(); $("copy").textContent = "Copied"; };
-if ($("add")) $("add").onclick = async (e) => { e.preventDefault(); await copy(); location.href = $("add").href; };
+$("copy").onclick = async () => {
+  const ok = await copy();
+  $("copy").textContent = ok ? "Copied" : "Couldn't copy";
+  $("copy").className = ok ? "done" : "";
+  if (!ok) $("link").insertAdjacentHTML("afterend", "<small>Press and hold the link above, then tap Copy.</small>");
+};
 
 // After a test, keep asking the server whether the phone has synced, for a couple of minutes.
 let tapped = 0, pollUntil = Date.now() + 120000;
@@ -279,7 +299,7 @@ const check = async () => {
       $("status").className = "ok";
       $("run").textContent = "Sync now";
     } else if (tapped && Date.now() - tapped > 15000) {
-      $("status").textContent = "Nothing came through yet. Tap Test it again and allow both prompts.";
+      $("status").textContent = "Nothing came through yet. If Shortcuts showed an error, your link didn't get pasted in: copy it in step 1, open Pie Sync in Shortcuts to edit it, clear the first box and paste. Then tap Test it again.";
     }
   } catch {}
 };
@@ -319,47 +339,62 @@ export function fromHealthAutoExport(body: Record<string, unknown>, day = today(
 }
 
 /**
- *   GET  /health/<token>           -> the setup page (HTML)
+ *   GET  /health/<token>           -> the setup page (HTML), for a browser
  *   GET  /health/<token>/status    -> { synced_at } (when the phone last synced; the setup page polls this)
  *   GET  /health/<token>/pending   -> { meals: [{ id, name, calories, protein, carbs?, fat?, at }] }
  *   POST /health/<token>/ack       { ids: [...] }                              -> { acked: n }
  *   POST /health/<token>/metrics   { active_kcal, steps, weight_kg | weight_lb } -> { ok: true }
  *                                  (or a Health Auto Export body, see fromHealthAutoExport)
  * An unknown token looks exactly like an unknown path.
+ *
+ * The bare link also works as the sync address for anything that isn't a browser. When the link pasted into
+ * the shortcut has a stray space or newline after it, Shortcuts keeps only the link and drops the "/pending"
+ * the shortcut adds; it would then be handed the HTML page and fail with "couldn't convert from Rich Text to
+ * Dictionary". So a non-browser GET on the bare link is read as "what's pending", and a POST by its body:
+ * `ids` means an ack, anything else is the Health numbers.
  */
-export async function handleHealthRequest(method: string, path: string, rawBody = "", hooks: HealthHooks = {}): Promise<HealthResponse> {
+export async function handleHealthRequest(method: string, path: string, rawBody = "", ctx: HealthContext = {}): Promise<HealthResponse> {
   const match = path.split("?")[0]!.match(ROUTE);
   const key = match ? await getState<string>(tokenKey(match[1]!)) : undefined;
-  if (!match || !key) return { status: 404, body: { error: "not found" } };
-  const route = (match[2] ?? "setup") as keyof typeof METHODS;
-  if (method.toUpperCase() !== METHODS[route]) return { status: 405, body: { error: `use ${METHODS[route]}` } };
-  if (route === "setup") return { status: 200, html: setupPage(shortcutLink()) };
-  if (route === "status") return { status: 200, body: { synced_at: (await getState<string>(seenKey(key))) ?? null } };
+  if (!match || !key) return { status: 404, body: { error: "not found" }, route: "unknown link" };
+  const verb = method.toUpperCase();
+
+  let fields: Record<string, unknown> | undefined;
+  if (verb === "POST") {
+    try {
+      const body: unknown = JSON.parse(rawBody);
+      if (typeof body === "object" && body !== null && !Array.isArray(body)) fields = body as Record<string, unknown>;
+    } catch {
+      // left undefined: answered below as a bad request
+    }
+  }
+
+  let route = (match[2] ?? "setup") as Route;
+  const bare = route === "setup" && !isBrowser(ctx);
+  if (bare && verb === "GET") route = "pending";
+  if (bare && verb === "POST") route = fields && "ids" in fields ? "ack" : "metrics";
+  const answer = (status: number, rest: { body?: unknown; html?: string }): HealthResponse => ({ status, ...rest, route: bare ? `${route} via the bare link` : route });
+
+  if (verb !== METHODS[route]) return answer(405, { body: { error: `use ${METHODS[route]}` } });
+  if (route === "setup") return answer(200, { html: setupPage(shortcutLink()) });
+  if (route === "status") return answer(200, { body: { synced_at: (await getState<string>(seenKey(key))) ?? null } });
   if (route === "pending") {
     const meals = await pendingMeals(key);
     const newcomer = await markSynced(key);
     // Telling them is a nicety; it must never get in the way of the sync itself.
-    if (newcomer) await Promise.resolve(hooks.onFirstSync?.(newcomer)).catch((err) => console.warn("first-sync notice failed:", err?.message ?? err));
-    return { status: 200, body: { meals } };
+    if (newcomer) await Promise.resolve(ctx.onFirstSync?.(newcomer)).catch((err) => console.warn("first-sync notice failed:", err?.message ?? err));
+    return answer(200, { body: { meals } });
   }
 
-  let body: unknown;
-  try {
-    body = JSON.parse(rawBody);
-  } catch {
-    body = undefined;
-  }
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return { status: 400, body: { error: "expected a JSON object" } };
-  const fields = body as Record<string, unknown>;
-
+  if (!fields) return answer(400, { body: { error: "expected a JSON object" } });
   if (route === "ack") {
     // A Shortcuts list can arrive as one newline-joined text, or as a list holding such a text, instead of a plain list.
     const ids = typeof fields.ids === "string" ? [fields.ids] : fields.ids;
-    if (!Array.isArray(ids)) return { status: 400, body: { error: "ids must be a list" } };
+    if (!Array.isArray(ids)) return answer(400, { body: { error: "ids must be a list" } });
     const clean = ids.filter((id): id is string => typeof id === "string").flatMap((id) => id.split("\n")).map((id) => id.trim()).filter(Boolean);
-    return { status: 200, body: { acked: await ackMeals(key, clean) } };
+    return answer(200, { body: { acked: await ackMeals(key, clean) } });
   }
   return (await saveMetrics(key, fromHealthAutoExport(fields) ?? fields))
-    ? { status: 200, body: { ok: true } }
-    : { status: 400, body: { error: "no usable numbers (active_kcal, steps, weight_kg or weight_lb)" } };
+    ? answer(200, { body: { ok: true } })
+    : answer(400, { body: { error: "no usable numbers (active_kcal, steps, weight_kg or weight_lb)" } });
 }
