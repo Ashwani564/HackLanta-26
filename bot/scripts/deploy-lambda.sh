@@ -22,7 +22,9 @@ printf '{"type":"module","private":true}\n' > "$OUT/package.json"
 npm install --prefix "$OUT" --no-save --no-audit --no-fund --omit=dev --os=linux --cpu=arm64 --libc=glibc \
   "sharp@$(ver sharp)" "heif2jpeg@$(ver heif2jpeg)" \
   "nice-grpc@$(ver nice-grpc)" "nice-grpc-common@$(ver nice-grpc-common)" "@grpc/grpc-js@$(ver @grpc/grpc-js)" >/dev/null
-(cd "$OUT" && rm -f ../lambda.zip && zip -qr ../lambda.zip .)
+# Git Bash on Windows has no zip; Windows' own tar (bsdtar) writes zip files.
+if command -v zip >/dev/null; then (cd "$OUT" && rm -f ../lambda.zip && zip -qr ../lambda.zip .)
+else (cd "$OUT" && rm -f ../lambda.zip && "$SYSTEMROOT/System32/tar.exe" -a -cf ../lambda.zip *); fi
 echo "    $(du -h dist/lambda.zip | cut -f1) dist/lambda.zip"
 
 if [[ "${1:-}" != "--code" ]]; then
