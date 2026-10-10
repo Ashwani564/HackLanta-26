@@ -1,37 +1,43 @@
-// Food photo -> Gemini Flash-Lite (labels, boxes, calories) -> SAM 2 masks from
-// those boxes (local vision-server) -> the same photo with tinted masks and
-// calorie labels drawn on top. Falls back to plain boxes if SAM 2 is down.
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { promisify } from "node:util";
-import { GoogleGenAI, Type } from "@google/genai";
+// Food photo -> Claude on Bedrock (labels, rough boxes, calories). When SAM_URL points at a
+// SAM 2 server (local or a cloud GPU), the boxes become masks and the photo comes back
+// annotated; without it, callers reply with the calorie breakdown as text.
+import { heifToJpeg } from "heif2jpeg";
+import { BedrockRuntimeClient, ConverseCommand, type ToolInputSchema } from "@aws-sdk/client-bedrock-runtime";
 import sharp from "sharp";
 
-const run = promisify(execFile);
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const SAM_URL = process.env.SAM_URL ?? "http://127.0.0.1:8788";
+const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-2" });
+export const SAM_URL = process.env.SAM_URL;
 const MAX_SIDE = 1280;
 const COLORS = ["#FF375F", "#30D158", "#0A84FF", "#FFD60A", "#BF5AF2", "#FF9F0A", "#64D2FF", "#FF6482"];
 
 const PROMPT = `Detect each distinct food or drink item in this photo (e.g. rice, chicken, salad, sauce, drink).
 Skip plates, cutlery, hands, and table. Merge tiny garnishes into the item they sit on. Max 8 items.
 For each: a short label (1-3 words), box_2d as [ymin, xmin, ymax, xmax] normalized to 0-1000,
-estimated calories and grams of protein for the visible portion. If there is no food, return [].`;
+estimated calories and grams of protein for the visible portion. If there is no food, report an empty list.
+The image has a cyan coordinate grid: lines every 100 units, labeled along the top (x) and left (y) edges. Read each item's edges off the grid.`;
 
 const SCHEMA = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      label: { type: Type.STRING },
-      box_2d: { type: Type.ARRAY, items: { type: Type.INTEGER } },
-      calories: { type: Type.INTEGER },
-      protein_g: { type: Type.INTEGER },
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string", description: "Short name, 1-3 words" },
+          box_2d: {
+            type: "array",
+            items: { type: "integer" },
+            description: "[ymin, xmin, ymax, xmax] of the item's tight bounding box, each normalized 0-1000 relative to the image height/width",
+          },
+          calories: { type: "integer", description: "Estimated kcal for the visible portion" },
+          protein_g: { type: "integer", description: "Estimated grams of protein" },
+        },
+        required: ["label", "box_2d", "calories", "protein_g"],
+      },
     },
-    required: ["label", "box_2d", "calories", "protein_g"],
   },
+  required: ["items"],
 };
 
 export type FoodItem = {
@@ -41,22 +47,75 @@ export type FoodItem = {
   protein_g: number;
 };
 
-export async function annotateFood(input: Buffer): Promise<{ image: Buffer; items: FoodItem[]; timings: Record<string, number> }> {
+/** Labels + calories only (no drawing). Works anywhere, including Lambda. */
+export async function analyzeFood(input: Buffer) {
   const timings: Record<string, number> = {};
   let t = Date.now();
   // Normalize: any format (HEIC included) -> upright JPEG <= MAX_SIDE, so
-  // Gemini's coordinates line up with the pixels we draw on.
+  // the model's coordinates line up with the pixels we draw on.
   const base = await sharp(await toJpeg(input))
     .rotate()
     .resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 90 })
     .toBuffer();
-  const { width: W, height: H } = await sharp(base).metadata();
   timings.prep = Date.now() - t;
-
   t = Date.now();
   const items = await detect(base);
-  timings.gemini = Date.now() - t;
+  timings.detect = Date.now() - t;
+  return { base, items, timings };
+}
+
+const sum = (items: FoodItem[], f: (i: FoodItem) => number) => items.reduce((a, it) => a + (Number(f(it)) || 0), 0);
+
+/** Plain template, used if the model is unavailable or gets a number wrong. */
+export function foodSummary(items: FoodItem[]) {
+  const cal = Math.round(sum(items, (i) => i.calories));
+  const protein = Math.round(sum(items, (i) => i.protein_g));
+  const big = [...items].sort((a, b) => b.calories - a.calories)[0]!;
+  return `~${cal} cal, ${protein}g protein. the ${big.label.toLowerCase()} is the biggest chunk at ~${Math.round(big.calories)}`;
+}
+
+const REPLY_SYSTEM = `you're texting a friend your quick read on a photo of their meal. be to the point and casual, like a real person.
+- one or two short lines. lowercase is fine.
+- lead with the total calories and protein, using the exact numbers you're given (keep the "~").
+- then at most one short remark: which item is most of the calories, or whether it's light or heavy.
+- no lists, no bullet points, no markdown, no "looks delicious", no disclaimers, no questions. at most one emoji, usually none.`;
+
+/** A casual one-or-two-line take on the meal. The numbers always come from the detected items. */
+export async function casualFoodReply(items: FoodItem[]): Promise<string> {
+  const cal = Math.round(sum(items, (i) => i.calories));
+  const protein = Math.round(sum(items, (i) => i.protein_g));
+  const modelId = process.env.BEDROCK_MODEL_ID;
+  if (!modelId) return foodSummary(items);
+  try {
+    const res = await bedrock.send(
+      new ConverseCommand({
+        modelId,
+        system: [{ text: REPLY_SYSTEM }],
+        messages: [
+          {
+            role: "user",
+            content: [{ text: JSON.stringify({ total_calories: cal, total_protein_g: protein, items: items.map((i) => ({ item: i.label, calories: Math.round(i.calories), protein_g: Math.round(i.protein_g) })) }) }],
+          },
+        ],
+        inferenceConfig: { maxTokens: 120, temperature: 0.7 },
+      }),
+      { abortSignal: AbortSignal.timeout(8000) },
+    );
+    const text = (res.output?.message?.content ?? []).map((b) => b.text ?? "").join("").trim();
+    // Must carry the real total, and must be short enough to read as a text.
+    if (text && text.length <= 220 && text.includes(String(cal))) return text;
+  } catch (err) {
+    console.warn("  casual food reply failed, using template:", (err as Error).message);
+  }
+  return foodSummary(items);
+}
+
+/** Annotated photo (SAM 2 masks when SAM_URL is reachable, boxes otherwise). */
+export async function annotateFood(input: Buffer): Promise<{ image: Buffer; items: FoodItem[]; timings: Record<string, number> }> {
+  const { base, items, timings } = await analyzeFood(input);
+  const { width: W, height: H } = await sharp(base).metadata();
+  let t = Date.now();
   if (items.length === 0) return { image: base, items, timings };
 
   t = Date.now();
@@ -73,72 +132,33 @@ export async function annotateFood(input: Buffer): Promise<{ image: Buffer; item
   return { image, items, timings };
 }
 
-// Flash-Lite usually answers in ~1.5s but sometimes stalls for 15s+, so we hedge:
-// fire another request if the first is slow, take whichever succeeds first.
-const HEDGES: [model: string, startAfterMs: number][] = [
-  ["gemini-3.1-flash-lite", 0],
-  ["gemini-3.1-flash-lite", 2500],
-  ["gemini-2.5-flash", 5000],
-];
 const DETECT_TIMEOUT_MS = 20000;
 
 async function detect(jpeg: Buffer): Promise<FoodItem[]> {
-  const contents = [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: jpeg.toString("base64") } }, { text: PROMPT }] }];
-  const controllers: AbortController[] = [];
-  const timers: NodeJS.Timeout[] = [];
-
-  const attempt = (model: string) => {
-    const ctrl = new AbortController();
-    controllers.push(ctrl);
-    return ai.models
-      .generateContent({
-        model,
-        contents,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: SCHEMA,
-          maxOutputTokens: 1024,
-          // Google recommends no thinking for detection.
-          thinkingConfig: { thinkingBudget: 0 },
-          abortSignal: ctrl.signal,
-        },
-      })
-      .then((res) => {
-        const parsed = JSON.parse(res.text ?? "[]");
-        return (Array.isArray(parsed) ? parsed : []).filter(
-          (it: any) => it?.label && Array.isArray(it.box_2d) && it.box_2d.length === 4,
-        ) as FoodItem[];
-      });
-  };
-
-  try {
-    return await new Promise<FoodItem[]>((resolve, reject) => {
-      let pending = HEDGES.length;
-      let lastErr: unknown;
-      const fail = (err: unknown) => {
-        lastErr = err;
-        if (--pending === 0) reject(lastErr);
-      };
-      for (const [model, delay] of HEDGES) {
-        timers.push(
-          setTimeout(() => {
-            attempt(model).then(resolve, (err) => {
-              if ((err as Error)?.name !== "AbortError") console.warn(`  ${model} failed: ${(err as any)?.status ?? (err as Error).message}`);
-              fail(err);
-            });
-          }, delay),
-        );
-      }
-      timers.push(setTimeout(() => reject(new Error("Gemini detection timed out")), DETECT_TIMEOUT_MS));
-    });
-  } finally {
-    timers.forEach(clearTimeout);
-    controllers.forEach((c) => c.abort());
-  }
+  const modelId = process.env.BEDROCK_VISION_MODEL_ID ?? process.env.BEDROCK_MODEL_ID;
+  if (!modelId) throw new Error("BEDROCK_MODEL_ID is not set");
+  const res = await bedrock.send(
+    new ConverseCommand({
+      modelId,
+      messages: [{ role: "user", content: [{ image: { format: "jpeg", source: { bytes: new Uint8Array(await withGrid(jpeg)) } } }, { text: PROMPT }] }],
+      inferenceConfig: { maxTokens: 1500, temperature: 0 },
+      toolConfig: {
+        tools: [{ toolSpec: { name: "report_food_items", description: "Report every food item found in the photo.", inputSchema: { json: SCHEMA } as ToolInputSchema } }],
+        toolChoice: { tool: { name: "report_food_items" } },
+      },
+    }),
+    { abortSignal: AbortSignal.timeout(DETECT_TIMEOUT_MS) },
+  );
+  const call = res.output?.message?.content?.find((c) => c.toolUse)?.toolUse;
+  const items = (call?.input as { items?: unknown })?.items;
+  return (Array.isArray(items) ? items : []).filter(
+    (it: any) => it?.label && Array.isArray(it.box_2d) && it.box_2d.length === 4 && it.box_2d.every((v: unknown) => typeof v === "number"),
+  ) as FoodItem[];
 }
 
 /** Ask the local SAM 2 server for one mask per box. Undefined if it's not running. */
 async function samMasks(jpeg: Buffer, boxes: ReturnType<typeof toPixels>[], W: number, H: number) {
+  if (!SAM_URL) return undefined;
   const valid = boxes.map((b) => (b ? [b.x, b.y, b.x + b.w, b.y + b.h] : [0, 0, 1, 1]));
   try {
     const form = new FormData();
@@ -248,15 +268,27 @@ function overlaySvg(items: FoodItem[], W: number, H: number, drawBoxes: boolean)
 }
 
 /** HEIC and friends -> JPEG via macOS sips (sharp's prebuilt libvips can't decode HEVC). */
+/** HEIC/HEIF (iPhone photos) -> JPEG via Photon's heif2jpeg; everything else goes straight to sharp. */
 async function toJpeg(input: Buffer): Promise<Buffer> {
-  const dir = await mkdtemp(join(tmpdir(), "photo-"));
-  try {
-    await writeFile(join(dir, "in"), input);
-    await run("sips", ["-s", "format", "jpeg", join(dir, "in"), "--out", join(dir, "out.jpg")]);
-    return await readFile(join(dir, "out.jpg"));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+  const brand = input.toString("ascii", 4, 12); // ISO-BMFF "ftypheic", "ftypmif1", ...
+  if (brand.startsWith("ftyp") && /hei|hev|mif|msf|avif/.test(brand.slice(4))) return heifToJpeg(input, { quality: 90 });
+  return input;
+}
+
+/** Cyan coordinate grid (every 100 of 0-1000) drawn on the copy sent to the model: in testing it
+ *  raised Claude Haiku's box overlap with the real items from 0.04 to 0.48. */
+async function withGrid(jpeg: Buffer): Promise<Buffer> {
+  const { width: W, height: H } = await sharp(jpeg).metadata();
+  const marks: string[] = [];
+  for (let v = 0; v <= 1000; v += 100) {
+    const x = (v / 1000) * W!, y = (v / 1000) * H!;
+    marks.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="#00E5FF" stroke-width="2" opacity="0.7"/>`,
+      `<text x="${x + 3}" y="22" font-size="20" font-family="Arial, sans-serif" font-weight="700" fill="#00E5FF" stroke="#000" stroke-width="0.6">${v}</text>`,
+      `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#00E5FF" stroke-width="2" opacity="0.7"/>`,
+      `<text x="3" y="${y - 4}" font-size="20" font-family="Arial, sans-serif" font-weight="700" fill="#00E5FF" stroke="#000" stroke-width="0.6">${v}</text>`);
   }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${marks.join("")}</svg>`;
+  return sharp(jpeg).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 88 }).toBuffer();
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);

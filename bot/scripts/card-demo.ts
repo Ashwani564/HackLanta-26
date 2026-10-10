@@ -12,10 +12,10 @@ const app = await Spectrum({ providers: [imessage.config()] });
 const im = imessage(app);
 const space = await im.space.create(await im.user(to));
 
-logMeal(to, { name: "Greek yogurt bowl", calories: 380, protein: 28, price: 6 });
-console.log("card:", await sendDayCard(space, logMeal(to, { name: "Iced latte", calories: 190, protein: 10, price: 5.5 })));
+await logMeal(to, { name: "Greek yogurt bowl", calories: 380, protein: 28, price: 6 });
+console.log("card:", await sendDayCard(space, await logMeal(to, { name: "Iced latte", calories: 190, protein: 10, price: 5.5 })));
 
 await new Promise((r) => setTimeout(r, 10_000));
-console.log("card:", await sendDayCard(space, logMeal(to, { name: "Chicken over rice", calories: 750, protein: 45, price: 11 })));
+console.log("card:", await sendDayCard(space, await logMeal(to, { name: "Chicken over rice", calories: 750, protein: 45, price: 11 })));
 
 await app.stop();

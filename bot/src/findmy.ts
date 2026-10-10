@@ -1,53 +1,74 @@
-// Find My via Photon's low-level iMessage SDK. Spectrum doesn't expose
-// locations, so we open our own client with the same project credentials.
-import { createGrpcClient } from "@photon-ai/advanced-imessage/grpc";
-
-const id = process.env.SPECTRUM_PROJECT_ID!;
-const secret = process.env.SPECTRUM_PROJECT_SECRET!;
-const ADDRESS = process.env.SPECTRUM_IMESSAGE_ADDRESS ?? "imessage.spectrum.photon.codes:443";
-
-let token: { value: string; expiresAt: number } | undefined;
-
-async function getToken(): Promise<string> {
-  if (token && Date.now() < token.expiresAt) return token.value;
-  const res = await fetch(`https://spectrum.photon.codes/projects/${id}/imessage/tokens`, {
-    method: "POST",
-    headers: {
-      authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"),
-      "content-type": "application/json",
-    },
-    body: "{}",
-  });
-  const { data } = await res.json();
-  // Renew at 80% of the TTL, like spectrum-ts does.
-  token = { value: data.token, expiresAt: Date.now() + data.expiresIn * 800 };
-  return token.value;
-}
-
-const im = createGrpcClient({ address: ADDRESS, tls: true, retry: true, token: getToken });
+// Find My via Photon's low-level iMessage SDK (see photon.ts).
+import { im } from "./photon.js";
 
 export type LocationResult =
-  | { status: "sharing"; place?: string; latitude?: number; longitude?: number; freshness: string }
-  | { status: "requested"; note: string };
+  | {
+      status: "sharing";
+      latitude: number;
+      longitude: number;
+      /** Short and full street-level descriptions from Find My (e.g. a landmark or street). */
+      place?: string;
+      fullAddress?: string;
+      /** How old the fix is. Live shares are ~0. */
+      ageMinutes?: number;
+      /** True when they tapped share just now, in answer to our request. */
+      justShared: boolean;
+    }
+  | { status: "not_shared"; reason: string };
 
-/** Returns the person's location if they share it with us, otherwise sends a Find My request card. */
-export async function locate(chatGuid: string, address: string): Promise<LocationResult> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]!;
+
+const ASK_LINES = [
+  "send me your location real quick so i can see what's around you",
+  "drop me your location and i'll see what's close",
+  "share your location with me, just tap the card, and i'll look around you",
+  "one sec, need to see where you're at. tap share on this",
+] as const;
+
+/** A fix with coordinates, or undefined if they aren't sharing (or the device is still locating). */
+async function read(address: string): Promise<Extract<LocationResult, { status: "sharing" }> | undefined> {
   try {
     const loc = await im.locations.get(address);
+    if (loc.latitude === undefined || loc.longitude === undefined) return undefined;
+    const ts = loc.locationTimestamp ? new Date(loc.locationTimestamp).getTime() : undefined;
     return {
       status: "sharing",
-      place: loc.shortAddress ?? loc.longAddress,
       latitude: loc.latitude,
       longitude: loc.longitude,
-      freshness: loc.locationType,
+      ...(loc.shortAddress && { place: loc.shortAddress }),
+      ...(loc.longAddress && { fullAddress: loc.longAddress }),
+      ...(ts !== undefined && { ageMinutes: Math.max(0, Math.round((Date.now() - ts) / 60000)) }),
+      justShared: false,
     };
   } catch (err: any) {
-    if (err?.name !== "NotFoundError") throw err;
+    if (err?.name === "NotFoundError") return undefined;
+    throw err;
   }
+}
+
+/**
+ * Where is this person right now? Reads their Find My share if they have one running. If not, says so
+ * in a casual line (via `say`), sends the Find My request card, and waits up to `waitMs` for them to tap
+ * share. Never guesses and never reuses an old location.
+ */
+export async function locate(
+  chatGuid: string,
+  address: string,
+  opts: { say: (text: string) => Promise<unknown>; waitMs?: number },
+): Promise<LocationResult> {
+  const now = await read(address);
+  if (now) return now;
+
+  await opts.say(pick(ASK_LINES));
   const receipt = await im.locations.request(chatGuid, address);
   console.log(`  find my request -> ${receipt.status}${receipt.reason ? ` (${receipt.reason})` : ""}`);
-  return {
-    status: "requested",
-    note: "Sent a Find My request card. They need to accept it, then ask again.",
-  };
+
+  const deadline = Date.now() + (opts.waitMs ?? 60_000);
+  while (Date.now() < deadline) {
+    await sleep(3000);
+    const shared = await read(address);
+    if (shared) return { ...shared, justShared: true };
+  }
+  return { status: "not_shared", reason: "they haven't tapped share yet" };
 }

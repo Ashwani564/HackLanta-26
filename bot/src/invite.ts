@@ -1,9 +1,9 @@
 // Invite friends by sharing their contact card: register them as a Photon
 // user (required on shared-pool plans), then text them an intro.
-const id = process.env.SPECTRUM_PROJECT_ID!;
-const secret = process.env.SPECTRUM_PROJECT_SECRET!;
-const BASE = `https://spectrum.photon.codes/projects/${id}/users/`;
-const auth = "Basic " + Buffer.from(`${id}:${secret}`).toString("base64");
+// Read credentials at call time: in Lambda they arrive from Secrets Manager after module load.
+const creds = () => ({ id: process.env.SPECTRUM_PROJECT_ID!, secret: process.env.SPECTRUM_PROJECT_SECRET! });
+const base = () => `https://spectrum.photon.codes/projects/${creds().id}/users/`;
+const auth = () => "Basic " + Buffer.from(`${creds().id}:${creds().secret}`).toString("base64");
 
 export type PhotonUser = {
   id: string;
@@ -16,14 +16,14 @@ export type PhotonUser = {
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: { authorization: auth, "content-type": "application/json", ...init?.headers },
+    headers: { authorization: auth(), "content-type": "application/json", ...init?.headers },
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.succeed) throw new Error(body.message ?? `Photon API ${res.status}`);
   return body.data as T;
 }
 
-export const listUsers = () => api<{ users: PhotonUser[] }>(BASE).then((d) => d.users);
+export const listUsers = () => api<{ users: PhotonUser[] }>(base()).then((d) => d.users);
 
 export async function findUser(phone: string) {
   return (await listUsers()).find((u) => u.phoneNumber === phone);
@@ -31,7 +31,7 @@ export async function findUser(phone: string) {
 
 /** Idempotent: re-registering an existing number returns the same user. */
 export function registerUser(phone: string, firstName?: string, lastName?: string) {
-  return api<PhotonUser>(BASE, {
+  return api<PhotonUser>(base(), {
     method: "POST",
     body: JSON.stringify({ type: "shared", phoneNumber: phone, firstName: firstName ?? null, lastName: lastName ?? null }),
   });
@@ -39,7 +39,7 @@ export function registerUser(phone: string, firstName?: string, lastName?: strin
 
 export async function removeUser(phone: string) {
   const user = await findUser(phone);
-  if (user) await api(`${BASE}${user.id}/`, { method: "DELETE" });
+  if (user) await api(`${base()}${user.id}/`, { method: "DELETE" });
   return !!user;
 }
 
@@ -53,6 +53,5 @@ export function toE164(raw: string): string | undefined {
 }
 
 export const inviteMessage = (friend: string | undefined, inviter: string) =>
-  `Hey${friend ? ` ${friend}` : ""}! 👋 ${inviter} invited you to plan food together. ` +
-  `I help pick what to eat based on your diet, allergies, calories and budget. ` +
-  `Any allergies or diet I should know about? (Reply STOP to opt out.)`;
+  `hey${friend ? ` ${friend}` : ""}, ${inviter} added you. i'm the food bot, i help figure out where to eat around campus. ` +
+  `any allergies or stuff you don't eat? (reply stop to opt out)`;

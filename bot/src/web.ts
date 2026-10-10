@@ -1,43 +1,45 @@
 // Tiny web server for the page that opens when someone taps the day card.
 import { createServer } from "node:http";
-import { ringsJpeg } from "./card.js";
-import { getDayByKey, totals } from "./day.js";
+import { dayJpeg } from "./day-art.js";
+import { TIME_ZONE, getDayByKey, totals, type Day } from "./day.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
 export function startWeb() {
   createServer(async (req, res) => {
-    const m = req.url?.match(/^\/day\/([0-9a-f]{12})(\/rings\.jpg)?(?:\?.*)?$/);
-    const day = m ? getDayByKey(m[1]!) : undefined;
+    const m = req.url?.match(/^\/day\/([0-9a-f]{12})(\/pie\.jpg)?(?:\?.*)?$/);
+    const day = m ? await getDayByKey(m[1]!) : undefined;
     if (!day) {
       res.writeHead(404, { "content-type": "text/plain" }).end("Nothing logged yet today.");
       return;
     }
     if (m![2]) {
-      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" }).end(await ringsJpeg(day));
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" }).end(await dayJpeg(day));
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(page(day));
   }).listen(PORT, () => console.log(`day dashboard on http://localhost:${PORT}`));
 }
 
-function page(day: NonNullable<ReturnType<typeof getDayByKey>>) {
+function page(day: Day) {
   const t = totals(day);
   const rows = day.meals
     .map(
-      (m) => `<li><span>${esc(m.name)}<small>${m.at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</small></span>
+      (m) => `<li><span>${esc(m.name)}<small>${new Date(m.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TIME_ZONE })}</small></span>
         <b>${Math.round(m.calories)} cal · ${Math.round(m.protein)}g${m.price ? ` · $${m.price.toFixed(2)}` : ""}</b></li>`,
     )
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Your day</title><style>
-body{margin:0;background:#000;color:#fff;font:16px -apple-system,system-ui,sans-serif;padding:16px}
-img{width:100%;border-radius:16px}h1{font-size:28px;margin:8px 0 4px}p{color:#aaa;margin:0 0 16px}
-ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid #222}
-small{display:block;color:#888;font-size:13px}b{white-space:nowrap;font-weight:600}
+<title>Today's pie</title><style>
+body{margin:0;background:#FFF6E5;color:#2B1B17;font:16px -apple-system,system-ui,sans-serif;padding:16px}
+img{width:100%;border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+h1{font:28px Phosphate,Futura,"Arial Black",sans-serif;letter-spacing:2px;color:#C0392B;margin:8px 0 4px}
+p{color:#7A4E2D;margin:0 0 16px;font-family:"American Typewriter",ui-monospace,monospace;font-size:14px}
+ul{list-style:none;padding:0;margin:16px 0 0}li{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:2px dashed #E4CBA8}
+small{display:block;color:#7A4E2D;font-size:13px}b{white-space:nowrap;font-weight:700}
 </style></head><body>
-<h1>Your day</h1><p>${Math.round(t.calories)} of ${day.goals.calories} cal · ${Math.round(t.protein)}g of ${day.goals.protein}g protein · $${t.spent.toFixed(2)} of $${day.goals.budget}</p>
-<img src="/day/${day.key}/rings.jpg" alt="Calorie, protein and budget rings">
+<h1>TODAY'S PIE</h1><p>${Math.round(t.calories)} of ${day.goals.calories} cal · ${Math.round(t.protein)}g of ${day.goals.protein}g protein · $${t.spent.toFixed(2)} of $${day.goals.budget}</p>
+<img src="/day/${day.key}/pie.jpg" alt="Today's pie: calories, protein and budget left">
 <ul>${rows || "<li>No meals logged yet. Text a food photo!</li>"}</ul>
 </body></html>`;
 }

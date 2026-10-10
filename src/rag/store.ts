@@ -232,14 +232,14 @@ const NAME_DESC = "(dish_name || ' ' || COALESCE(description, ''))";
 const TEXT = "(dish_name || ' ' || COALESCE(description, '') || ' ' || COALESCE(category, ''))";
 
 /**
- * Build the retrieval query. Hard filters are in the WHERE clause, so a dish that fails them can never
- * be returned however similar it is. Similarity only orders what survives.
+ * The hard filters, shared by dish search and the restaurant list so the two can never disagree about
+ * what a person can eat. `kinds` and `restaurantId` are not safety filters; they only narrow the scope.
  */
-export function buildSearchSql(
+function buildWhere(
   c: Constraints,
-  limit: number,
   kinds: readonly ItemKind[] = [],
-): { sql: string; params: Record<string, Param> } {
+  restaurantId?: string,
+): { where: string[]; params: Record<string, Param> } {
   const where: string[] = [];
   const params: Record<string, Param> = {};
 
@@ -248,6 +248,10 @@ export function buildSearchSql(
   if (validKinds.length > 0) {
     where.push("item_kind = ANY(string_to_array(:kinds, ','))");
     params.kinds = validKinds.join(",");
+  }
+  if (restaurantId) {
+    where.push("restaurant_id = :restaurant_id");
+    params.restaurant_id = restaurantId;
   }
 
   if (c.allergens.length > 0 || c.unmappedAllergyTerms.length > 0) where.push("allergens_known");
@@ -282,7 +286,20 @@ export function buildSearchSql(
     where.push(`NOT ((${TEXT} || ' ' || restaurant_name || ' ' || array_to_string(cuisine, ' ')) ~* :exclude)`);
     params.exclude = exclude;
   }
+  return { where, params };
+}
 
+/**
+ * Build the retrieval query. Hard filters are in the WHERE clause, so a dish that fails them can never
+ * be returned however similar it is. Similarity only orders what survives.
+ */
+export function buildSearchSql(
+  c: Constraints,
+  limit: number,
+  kinds: readonly ItemKind[] = [],
+  restaurantId?: string,
+): { sql: string; params: Record<string, Param> } {
+  const { where, params } = buildWhere(c, kinds, restaurantId);
   const sql = `SELECT dish_id, restaurant_id, restaurant_name, place_id, lat, lng, dish_name, description, category, item_kind,
       array_to_string(cuisine, '|') AS cuisine,
       price_usd, calories, protein_g, carbs_g, fat_g, sodium_mg, nutrition_source,
@@ -301,8 +318,57 @@ export async function searchDishes(
   c: Constraints,
   limit = 40,
   kinds: readonly ItemKind[] = [],
+  restaurantId?: string,
 ): Promise<Candidate[]> {
-  const { sql, params } = buildSearchSql(c, limit, kinds);
+  const { sql, params } = buildSearchSql(c, limit, kinds, restaurantId);
   const rows = await query<Row>(sql, { ...params, q: vectorLiteral(queryEmbedding) });
   return rows.map(candidateFromRow);
+}
+
+export interface RestaurantSummary {
+  restaurantId: string;
+  restaurantName: string;
+  lat: number;
+  lng: number;
+  cuisine: string[];
+  /** How many dishes passed the hard filters. A restaurant with 0 never appears. */
+  dishCount: number;
+  minPriceUsd: number | null;
+  maxPriceUsd: number | null;
+}
+
+/** Same WHERE as dish search, grouped by restaurant: only restaurants with at least one dish this person can eat. */
+export function buildRestaurantsSql(c: Constraints, kinds: readonly ItemKind[] = []): { sql: string; params: Record<string, Param> } {
+  const { where, params } = buildWhere(c, kinds);
+  const sql = `SELECT restaurant_id, max(restaurant_name) AS restaurant_name, avg(lat) AS lat, avg(lng) AS lng,
+      array_to_string(max(cuisine), '|') AS cuisine, count(*)::int AS dish_count,
+      min(price_usd) AS min_price, max(price_usd) AS max_price
+    FROM dishes
+    ${where.length > 0 ? `WHERE ${where.join("\n      AND ")}` : ""}
+    GROUP BY restaurant_id
+    ORDER BY restaurant_id`;
+  return { sql, params };
+}
+
+export async function listRestaurants(c: Constraints, kinds: readonly ItemKind[] = []): Promise<RestaurantSummary[]> {
+  const { sql, params } = buildRestaurantsSql(c, kinds);
+  const rows = await query<{
+    restaurant_id: string; restaurant_name: string; lat: number; lng: number; cuisine: string | null;
+    dish_count: number; min_price: number | null; max_price: number | null;
+  }>(sql, params);
+  return rows.map((r) => ({
+    restaurantId: r.restaurant_id,
+    restaurantName: r.restaurant_name,
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    cuisine: pipeList(r.cuisine),
+    dishCount: r.dish_count,
+    minPriceUsd: r.min_price === null ? null : Number(r.min_price),
+    maxPriceUsd: r.max_price === null ? null : Number(r.max_price),
+  }));
+}
+
+/** Fire-and-forget: wakes a paused Serverless v2 cluster (~15-20 s) while the user is still busy sharing a location. */
+export function warmDb(): void {
+  query("SELECT 1").catch(() => {});
 }

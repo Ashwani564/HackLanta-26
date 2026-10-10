@@ -16,9 +16,9 @@ export interface RetrievalResult {
 export async function retrieve(
   query: string,
   constraints: Constraints,
-  opts: { limit?: number; kinds?: readonly ItemKind[] } = {},
+  opts: { limit?: number; kinds?: readonly ItemKind[]; restaurantId?: string } = {},
 ): Promise<RetrievalResult> {
-  const rows = await searchDishes(await embed(query), constraints, opts.limit ?? 40, opts.kinds ?? []);
+  const rows = await searchDishes(await embed(query), constraints, opts.limit ?? 40, opts.kinds ?? [], opts.restaurantId);
   const { kept, dropped } = filterDishes(rows, constraints);
   return { candidates: kept, leaked: dropped };
 }
