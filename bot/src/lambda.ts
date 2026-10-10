@@ -67,13 +67,18 @@ export const handler = async (event: any, context: { functionName: string }) => 
   // Apple Health sync from the phone's shortcut. Authenticated by the token in the path, not a Photon signature.
   if (isHealthPath(event?.rawPath ?? "")) {
     const text = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
-    const out = healthReply(
-      await handleHealthRequest(event.requestContext?.http?.method ?? "GET", event.rawPath, text, {
-        // Texting them happens in an async run, so the phone's request isn't held up while Photon connects.
-        onFirstSync: (userId) =>
-          lambda.send(new InvokeCommand({ FunctionName: context.functionName, InvocationType: "Event", Payload: Buffer.from(JSON.stringify({ kind: "health-connected", userId })) })),
-      }),
-    );
+    const method = event.requestContext?.http?.method ?? "GET";
+    const agent: string | undefined = event.headers?.["user-agent"];
+    const result = await handleHealthRequest(method, event.rawPath, text, {
+      accept: event.headers?.accept,
+      userAgent: agent,
+      // Texting them happens in an async run, so the phone's request isn't held up while Photon connects.
+      onFirstSync: (userId) =>
+        lambda.send(new InvokeCommand({ FunctionName: context.functionName, InvocationType: "Event", Payload: Buffer.from(JSON.stringify({ kind: "health-connected", userId })) })),
+    });
+    // Which route answered and what kind of app asked. Never the path: it holds the person's token.
+    console.log(`health ${method} ${result.route} -> ${result.status} (${(agent ?? "no agent").split(/[\/\s]/)[0]!.replace(/[^\w.-]/g, "").slice(0, 32)})`);
+    const out = healthReply(result);
     return { statusCode: out.status, headers: out.headers, body: out.text };
   }
   const route = cardRoute(event);
