@@ -40,6 +40,21 @@ Resources:
         - { AttributeName: pk, KeyType: HASH }
       TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
 
+  # One item per person, keyed by E.164 phone. Holds name and the restrictions the group-chat merge uses
+  # (allergies, diet, goal, budget). Health fields stay private: replies only ever use the merged constraints.
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: phone, AttributeType: S }
+      KeySchema:
+        - { AttributeName: phone, KeyType: HASH }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+
   BotRole:
     Type: AWS::IAM::Role
     Properties:
@@ -76,6 +91,10 @@ Resources:
                 Effect: Allow
                 Action: [dynamodb:GetItem, dynamodb:PutItem]
                 Resource: !GetAtt StateTable.Arn
+              - Sid: Users
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource: !GetAtt UsersTable.Arn
               - Sid: Speech
                 Effect: Allow
                 Action: [polly:SynthesizeSpeech, transcribe:StartStreamTranscription]
@@ -110,6 +129,7 @@ Resources:
           DB_SECRET_ARN: !Ref DbSecretArn
           DB_NAME: dining
           STATE_TABLE: !Ref StateTable
+          USERS_TABLE: !Ref UsersTable
           PHOTON_SECRET_ID: !Ref PhotonSecretName
           BOT_TIMEZONE: America/New_York
           POLL_CHAIN_MS: "240000"
@@ -155,3 +175,5 @@ Outputs:
     Value: !Ref BotFunction
   StateTableName:
     Value: !Ref StateTable
+  UsersTableName:
+    Value: !Ref UsersTable
