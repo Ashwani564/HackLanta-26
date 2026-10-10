@@ -7,7 +7,7 @@ An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](
 | Text the bot | What happens |
 |---|---|
 | Any message | Gemini replies in one short line, with diet, allergy, calorie and budget awareness. |
-| A food photo | Estimated calories and protein; the meal is logged and the "Your day" card updates. |
+| A food photo | Sends the **same photo back** with each food item segmented (SAM 2) and labeled with estimated calories, plus a total. No text reply. |
 | A menu photo | Best 1-2 picks, with calorie estimates. |
 | "make a poll for where to eat" | Sends a native iMessage poll. Votes are logged. |
 | "send me a voice note …" / a voice message | Transcribes your voice note (ElevenLabs Scribe) and replies with a spoken voice note (ElevenLabs TTS); falls back to Gemini. |
@@ -38,6 +38,18 @@ Dashboard → your project → **Users** → add your iMessage phone number. Eac
 their own bot number (`assignedPhoneNumber`). Text that number.
 
 Not sure which handle your iMessage sends from? Text [debug.photon.codes](https://debug.photon.codes).
+
+## Food photo segmentation (optional, recommended)
+
+Food photos go through Gemini Flash-Lite (labels, rough boxes, calories), then a local
+**SAM 2** service turns those boxes into pixel-accurate masks. Run it next to the bot:
+
+```bash
+npm run vision     # needs uv (https://docs.astral.sh/uv/); first run downloads ~1-2 GB
+```
+
+Typical time on an M4: ~2-5 s per photo (Gemini ~1.5 s, SAM 2 ~0.3 s). If the service
+isn't running, the bot still works and draws boxes instead. See `vision-server/README.md`.
 
 ## Run
 
@@ -78,11 +90,13 @@ bot/
 │   ├── card.ts      # "Your day" iMessage App card: rings image (sharp) + edit-in-place
 │   ├── plan.ts      # "Tonight's plan" group vote card
 │   ├── web.ts       # Dashboard page the cards link to (port 8787)
-│   └── invite.ts    # Contact-card invites via the Photon users API; STOP opt-out
+│   ├── invite.ts    # Contact-card invites via the Photon users API; STOP opt-out
+│   └── vision.ts    # Food photo -> Gemini boxes + calories -> SAM 2 masks -> annotated photo
 ├── scripts/
 │   ├── send.ts      # CLI: send a message to a user
 │   ├── card-demo.ts # Send a sample "Your day" card and update it
 │   └── plan-demo.ts # Send a sample "Tonight's plan" card with simulated votes
+├── vision-server/   # Python SAM 2 service (FastAPI, uv); npm run vision
 └── .env.example     # Copy to .env (never commit .env)
 ```
 

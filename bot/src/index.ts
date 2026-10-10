@@ -1,12 +1,13 @@
-import { Spectrum, poll, voice } from "spectrum-ts";
+import { Spectrum, attachment, poll, voice } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { terminal } from "spectrum-ts/providers/terminal";
-import { chat, reset, PHOTO_PROMPT, VOICE_PROMPT, VOICE_TRANSCRIPT_PROMPT, type ToolRunner } from "./gemini.js";
+import { chat, remember, reset, VOICE_PROMPT, VOICE_TRANSCRIPT_PROMPT, type ToolRunner } from "./gemini.js";
 import { locate } from "./findmy.js";
 import { speak, toWav, transcribe } from "./voice.js";
 import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
 import { startWeb } from "./web.js";
+import { annotateFood } from "./vision.js";
 import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./invite.js";
 
 // MODE=terminal runs locally with no credentials (tuichat UI).
@@ -115,10 +116,20 @@ async function handle(space: any, message: any) {
         await message.react("👀");
         const bytes = await message.content.read();
         console.log(`  image ${name} ${mimeType} ${bytes.length} bytes`);
-        await respond([
-          { inlineData: { mimeType, data: Buffer.from(bytes).toString("base64") } },
-          { text: PHOTO_PROMPT },
-        ]);
+        // Reply with the same photo, food items outlined and labeled. No text.
+        const { image, items, timings } = await annotateFood(Buffer.from(bytes));
+        console.log(`  food: ${items.map((it) => `${it.label} ${it.calories}cal`).join(", ") || "none"} ${JSON.stringify(timings)}`);
+        if (items.length === 0) {
+          await message.react("🤔");
+          return;
+        }
+        await space.send(attachment(image, { name: "calories.jpg", mimeType: "image/jpeg" }));
+        const cal = items.reduce((a, it) => a + (Number(it.calories) || 0), 0);
+        remember(
+          space.id,
+          "[I sent a food photo]",
+          `[Annotated it] ${items.map((it) => `${it.label}: ~${it.calories} cal, ~${it.protein_g}g protein`).join("; ")}. Total ~${cal} cal (est.)`,
+        );
         break;
       }
       case "voice": {

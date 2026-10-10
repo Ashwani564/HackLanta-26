@@ -165,6 +165,13 @@ function trim(history: Content[]): Content[] {
   return history.slice(start);
 }
 
+/** Record an exchange that happened outside chat() (e.g. an annotated photo) so follow-ups have context. */
+export function remember(spaceId: string, userText: string, modelText: string) {
+  const history = histories.get(spaceId) ?? [];
+  history.push({ role: "user", parts: [{ text: userText }] }, { role: "model", parts: [{ text: modelText }] });
+  histories.set(spaceId, trim(history));
+}
+
 export function reset(spaceId: string) {
   histories.delete(spaceId);
 }
