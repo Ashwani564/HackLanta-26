@@ -7,11 +7,14 @@ An iMessage bot that helps you decide what to eat. It runs on [Photon Spectrum](
 | Text the bot | What happens |
 |---|---|
 | Any message | Gemini replies in one short line, with diet, allergy, calorie and budget awareness. |
-| A food photo | Estimated calories and protein for the dish. |
+| A food photo | Estimated calories and protein; the meal is logged and the "Your day" card updates. |
 | A menu photo | Best 1-2 picks, with calorie estimates. |
 | "make a poll for where to eat" | Sends a native iMessage poll. Votes are logged. |
 | "send me a voice note …" / a voice message | Transcribes your voice note (ElevenLabs Scribe) and replies with a spoken voice note (ElevenLabs TTS); falls back to Gemini. |
 | "where am I?" / "food near me" | Sends a Find My request card, then reads the shared location. |
+| "show my day" / "I had a protein shake" | "Your day" iMessage App card (calorie/protein/budget rings), edited in place as meals are logged. |
+| "my goal is 1800 cal, 150g protein, $30" | Sets daily targets; the card redraws. |
+| A friend's **contact card** | Registers them as a Photon user and texts them an intro from the bot. They can reply STOP to opt out. |
 | `/reset` | Clears that chat's memory. |
 
 ## Requirements
@@ -51,6 +54,15 @@ Send a one-off message from the bot to a registered user:
 npm run send -- +15551234567 "Dinner poll in 5 min!"
 ```
 
+Demo cards (sample data, sent to a registered user and then updated in place):
+
+```bash
+npx tsx --env-file=.env scripts/card-demo.ts +15551234567   # "Your day" rings card
+npx tsx --env-file=.env scripts/plan-demo.ts +15551234567   # "Tonight's plan" group vote card
+```
+
+Tapping a card opens `PUBLIC_URL/day/<id>`, served by the bot on port 8787. Set `PUBLIC_URL` in `.env` to a public URL that reaches that port (a tunnel or a deployed host). Without it, cards link to a placeholder.
+
 No public URL or ngrok is needed. The server connects out to Photon over gRPC.
 
 ## Project layout
@@ -61,9 +73,16 @@ bot/
 │   ├── index.ts     # Spectrum app: receives messages and routes by type (text/photo/voice/poll vote)
 │   ├── gemini.ts    # System prompt, tool definitions, tool-call loop, per-chat memory, model fallback
 │   ├── voice.ts     # ElevenLabs (Scribe STT + TTS) with Gemini fallback -> .m4a voice note / transcript
-│   └── findmy.ts    # Find My location via @photon-ai/advanced-imessage
+│   ├── findmy.ts    # Find My location via @photon-ai/advanced-imessage
+│   ├── day.ts       # Per-person daily goals + meal log (in memory)
+│   ├── card.ts      # "Your day" iMessage App card: rings image (sharp) + edit-in-place
+│   ├── plan.ts      # "Tonight's plan" group vote card
+│   ├── web.ts       # Dashboard page the cards link to (port 8787)
+│   └── invite.ts    # Contact-card invites via the Photon users API; STOP opt-out
 ├── scripts/
-│   └── send.ts      # CLI: send a message to a user
+│   ├── send.ts      # CLI: send a message to a user
+│   ├── card-demo.ts # Send a sample "Your day" card and update it
+│   └── plan-demo.ts # Send a sample "Tonight's plan" card with simulated votes
 └── .env.example     # Copy to .env (never commit .env)
 ```
 

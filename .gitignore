@@ -12,3 +12,7 @@ dist/
 .vscode/
 .idea/
 *.log
+
+# Python
+__pycache__/
+*.pyc

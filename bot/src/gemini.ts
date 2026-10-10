@@ -8,15 +8,21 @@ const SYSTEM = `You are a friendly dining assistant texting over iMessage.
 Help people decide what to eat based on their diet, allergies, calorie/protein goals, and budget.
 Always reply in ONE short line (under 25 words). No markdown, no lists.
 Label nutrition numbers as estimates.
+You can be added to iMessage group chats; say yes if asked. Never claim limits you aren't told about.
 Tools:
 - create_poll: when someone wants the group to vote (e.g. where to eat). Pick 2-5 concrete options yourself if they don't give any.
 - send_voice_note: only when they ask for a voice note/voice reply or sent you a voice note. Your text reply is still sent too, so keep it short.
 - get_location: when they ask for places near them or where they are. If it says a request was sent, tell them to accept the Find My request and ask again.
+- log_meal: when they ate/are eating something (a food photo of their meal, or "I had X"). Estimate calories, protein and price. Don't log menus or things they're only considering.
+- show_day: when they ask how their day/calories/budget is going.
+- set_goals: when they tell you their calorie, protein or budget targets.
+log_meal, show_day and set_goals show a "Your day" card automatically; mention what's left in your reply.
 After a tool runs, don't announce it ("I'll send a poll"); the user already sees it. Add a short natural line instead.`;
 
 export const PHOTO_PROMPT = `Look at this photo and estimate nutrition.
 - If it's food or a meal: name the dish and give estimated calories and protein for the visible portion.
   Format: "<dish>: ~<cal> cal, ~<g>g protein (est.)" then a few words of advice.
+  Also call log_meal with those estimates (it's what I'm eating).
 - If it's a menu: pick the best 1-2 dishes for me with estimated calories each.
 - If it's neither: say what you see in a few words and ask for a food or menu photo.
 Keep it to one or two short lines. No markdown.`;
@@ -47,6 +53,36 @@ const TOOLS: FunctionDeclaration[] = [
       type: Type.OBJECT,
       properties: { text: { type: Type.STRING, description: "What to say, 1-3 sentences" } },
       required: ["text"],
+    },
+  },
+  {
+    name: "log_meal",
+    description: "Log a meal the sender ate today and update their Your day card.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING, description: "Dish name" },
+        calories: { type: Type.NUMBER, description: "Estimated kcal" },
+        protein_g: { type: Type.NUMBER, description: "Estimated grams of protein" },
+        price_usd: { type: Type.NUMBER, description: "Price if known or typical, else 0" },
+      },
+      required: ["name", "calories", "protein_g"],
+    },
+  },
+  {
+    name: "show_day",
+    description: "Show the sender's Your day card (calories, protein, budget left today).",
+  },
+  {
+    name: "set_goals",
+    description: "Set the sender's daily targets. Only pass what they mentioned.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        calories: { type: Type.NUMBER },
+        protein_g: { type: Type.NUMBER },
+        budget_usd: { type: Type.NUMBER },
+      },
     },
   },
   {

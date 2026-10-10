@@ -4,6 +4,10 @@ import { terminal } from "spectrum-ts/providers/terminal";
 import { chat, reset, PHOTO_PROMPT, VOICE_PROMPT, VOICE_TRANSCRIPT_PROMPT, type ToolRunner } from "./gemini.js";
 import { locate } from "./findmy.js";
 import { speak, toWav, transcribe } from "./voice.js";
+import { getDay, logMeal, setGoals, summary } from "./day.js";
+import { sendDayCard } from "./card.js";
+import { startWeb } from "./web.js";
+import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./invite.js";
 
 // MODE=terminal runs locally with no credentials (tuichat UI).
 // MODE=imessage (default) connects to Photon's managed iMessage lines.
@@ -22,6 +26,7 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
+startWeb();
 console.log(`dining-agent listening (${mode})`);
 
 for await (const [space, message] of app.messages) {
@@ -50,6 +55,24 @@ async function handle(space: any, message: any) {
         await space.send(voice(audio, { name: "voice-note.m4a", mimeType: "audio/mp4", duration }));
         return { sent: true };
       }
+      case "log_meal":
+      case "show_day":
+      case "set_goals": {
+        const user = message.sender?.id ?? "unknown";
+        const day =
+          name === "log_meal"
+            ? logMeal(user, {
+                name: args.name,
+                calories: args.calories,
+                protein: args.protein_g,
+                price: args.price_usd ?? 0,
+              })
+            : name === "set_goals"
+              ? setGoals(user, { calories: args.calories, protein: args.protein_g, budget: args.budget_usd })
+              : getDay(user);
+        const card = await sendDayCard(space, day);
+        return { card, ...summary(day) };
+      }
       case "get_location":
         if (message.platform !== "imessage" || !message.sender) return { error: "Location only works in iMessage" };
         return await locate(space.id, message.sender.id);
@@ -71,6 +94,13 @@ async function handle(space: any, message: any) {
         if (text.trim().toLowerCase() === "/reset") {
           reset(space.id);
           await message.reply("Fresh start 🧹");
+          return;
+        }
+        if (text.trim().toLowerCase() === "stop" && message.sender) {
+          // Reply first: once removed, the shared line can't message them.
+          await message.reply("You're unsubscribed. Text any time if you want back in 👋");
+          await removeUser(message.sender.id);
+          console.log(`  opted out ${message.sender.id}`);
           return;
         }
         await respond([{ text }]);
@@ -108,6 +138,9 @@ async function handle(space: any, message: any) {
         }
         break;
       }
+      case "contact":
+        await invite(space, message);
+        break;
       case "poll_option":
         console.log(`  vote ${message.content.selected ? "+" : "-"} "${message.content.title}"`);
         break;
@@ -118,4 +151,32 @@ async function handle(space: any, message: any) {
     console.error("  handler error:", err);
     await space.send("Something broke on my end, try again in a sec.");
   }
+}
+
+/** Contact card shared with the bot -> register that friend and text them an intro. */
+async function invite(space: any, message: any) {
+  const card = message.content;
+  const raw = (card.phones ?? []).find((p: any) => p.type === "mobile") ?? card.phones?.[0];
+  const phone = raw && toE164(raw.value);
+  const first = card.name?.first ?? card.name?.formatted?.split(" ")[0];
+  if (!phone) {
+    await message.reply("That contact doesn't have a phone number I can text 🤔");
+    return;
+  }
+  if (message.platform !== "imessage") {
+    await message.reply(`Would invite ${first ?? phone}, but invites only work over iMessage.`);
+    return;
+  }
+
+  const inviter = message.sender && (await findUser(message.sender.id));
+  const user = await registerUser(phone, first, card.name?.last);
+  console.log(`  invited ${phone} -> line ${user.assignedPhoneNumber ?? "?"}`);
+
+  // app is a terminal|imessage union; we only get here on iMessage.
+  const im = imessage(app as any);
+  const dm = await im.space.create(await im.user(phone));
+  await dm.send(inviteMessage(first, inviter?.firstName ?? "Your friend"));
+
+  await message.react("👍");
+  await message.reply(`Invited ${first ?? phone} ✅ I just texted them. Once they reply, I'll know their diet too.`);
 }

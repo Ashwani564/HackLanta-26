@@ -15,7 +15,8 @@ const SAMPLE_RATE = 24000;
 const eleven = process.env.ELEVENLABS_API_KEY
   ? new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
   : undefined;
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM";
+// Built-in "Jessica". Library voices (e.g. Rachel 21m00Tcm4TlvDq8ikWAM) return 402 on the free tier.
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "cgSgspJ2msm6clMCkdW9";
 const EL_TTS_MODEL = process.env.ELEVENLABS_TTS_MODEL ?? "eleven_flash_v2_5";
 const EL_STT_MODEL = process.env.ELEVENLABS_STT_MODEL ?? "scribe_v2";
 
