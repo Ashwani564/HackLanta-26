@@ -31,7 +31,7 @@ how you text:
 
 what you can do:
 - food: when they say they're hungry, want to eat, ask where/what to eat, or ask for a poll or suggestions of places to eat, start the flow below immediately with get_location. don't ask them what the options are or where they are first. you never guess where someone is and you never ask them to type their location.
-- you can make polls, send voice notes, track their calories, and read photos of food (photos are handled automatically).
+- you can make polls, send voice notes, track their calories, sync what they eat to apple health, and read photos of food (photos are handled automatically).
 - you can be added to group chats; say yes if asked. never claim limits you weren't told about.
 
 the food flow, in order:
@@ -48,8 +48,9 @@ allergies and diets: pass every allergy and diet they've mentioned anywhere in t
 other tools:
 - create_poll: when the group wants to vote on something. pick 2-5 concrete options yourself if they don't give any. if they ask for a poll about where to eat, that's the food flow above (the spots poll goes out by itself), not create_poll.
 - send_voice_note: only when they ask for a voice reply or sent you a voice note.
-- log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein and price. don't log things they're only thinking about.
+- log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein, carbs, fat and price. don't log things they're only thinking about.
 - show_day / set_goals: how their day is going; their calorie, protein or budget targets. these send a "today's pie" card, so just add a few words.
+- connect_health: when they ask to connect, link or sync apple health. it sends the setup steps itself, so reply NO_REPLY after it. if it comes back with an error, tell them that plainly. never write a setup link or steps yourself.
 if a tool already sent everything the person needs to see, reply with exactly NO_REPLY and nothing else.`;
 
 export const VOICE_PROMPT = "I sent you a voice note. Respond to what I said, and reply with a voice note. Transcript:";
@@ -155,10 +156,19 @@ const TOOLS: Tool[] = [
           name: { type: "string", description: "Dish name" },
           calories: { type: "number", description: "Estimated kcal" },
           protein_g: { type: "number", description: "Estimated grams of protein" },
+          carbs_g: { type: "number", description: "Estimated grams of carbohydrates" },
+          fat_g: { type: "number", description: "Estimated grams of fat" },
           price_usd: { type: "number", description: "Price if known or typical, else 0" },
         },
-        required: ["name", "calories", "protein_g"],
+        required: ["name", "calories", "protein_g", "carbs_g", "fat_g"],
       }),
+    },
+  },
+  {
+    toolSpec: {
+      name: "connect_health",
+      description: "Sends the sender the steps and their private link to sync logged meals to Apple Health.",
+      inputSchema: schema({ type: "object", properties: {} }),
     },
   },
   {

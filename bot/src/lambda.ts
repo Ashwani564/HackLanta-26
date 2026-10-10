@@ -13,7 +13,7 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createHandler } from "./handler.js";
-import { handleHealthRequest, isHealthPath } from "./health.js";
+import { handleHealthRequest, isHealthPath, setPublicBase } from "./health.js";
 import { loadSecrets } from "./secrets.js";
 import { claimOnce } from "./store.js";
 
@@ -81,6 +81,8 @@ function verify(body: Buffer, headers: Headers): "ok" | "missing headers" | "sta
 
 async function processDelivery({ body, headers }: Delivery) {
   const { app, handle } = await getBot();
+  // Photon reached us on the Function URL, so that host is where phones can reach the sync routes too.
+  if (headers.host) setPublicBase(`https://${headers.host}`);
   let started!: () => void, finished!: () => void;
   const didStart = new Promise<void>((r) => (started = r));
   const didFinish = new Promise<void>((r) => (finished = r));

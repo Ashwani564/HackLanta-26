@@ -98,7 +98,7 @@ POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  n
 npx tsx scripts/health-demo.ts     # logs two sample meals, prints the sync link; Enter logs another
 ```
 
-**Build the "Pie Sync" shortcut** (Shortcuts app → + → name it Pie Sync). Six actions:
+**Build the "Pie Sync" shortcut** (Shortcuts app → + → name it Pie Sync):
 
 1. **Text**: paste the sync link (everything up to and including the token, no trailing slash).
 2. **Get Contents of URL**: URL is the `Text` variable followed by `/pending`. Method GET.
@@ -106,15 +106,33 @@ npx tsx scripts/health-demo.ts     # logs two sample meals, prints the sync link
 4. **Repeat with Each** item in `Dictionary Value`. Inside the loop:
    - **Log Health Sample**: Type `Dietary Energy`, Unit `kcal`, Value = `Repeat Item` (tap it → Get Value for Key `calories`).
    - **Log Health Sample**: Type `Protein`, Unit `g`, Value = `Repeat Item` → key `protein`.
+   - **If** `Repeat Item` → key `carbs` *has any value*: **Log Health Sample**, Type `Carbohydrates`, Unit `g`, that value. End If.
+   - **If** `Repeat Item` → key `fat` *has any value*: **Log Health Sample**, Type `Total Fat`, Unit `g`, that value. End If.
    - **Add to Variable**: add `Repeat Item` → key `id` to a variable named `Synced`.
 5. After End Repeat, **Get Contents of URL**: URL is `Text` followed by `/ack`. Method POST, Request Body JSON, one
    Text field `ids` = the `Synced` variable.
 
-Leave the Date on both Log Health Sample actions empty: the meal is stamped with the time the shortcut runs.
+Leave the Date on the Log Health Sample actions empty: the meal is stamped with the time the shortcut runs.
+`carbs` and `fat` are missing from a meal when nobody estimated them, which is why those two sit inside an If.
 
 **Check it**: run the shortcut, allow the connection and the Health write access it asks for, then open
 Health → Browse → Nutrition → Dietary Energy → Show All Data. The sample meals are there with source Shortcuts.
 Run it again: nothing new is added. Press Enter in the demo, run it once more: one new entry.
+
+**Share it** so the bot can hand it out. In the shortcut's details (ⓘ) → Setup, add an Import Question on the Text
+action ("Paste the link I texted you"), then Share → Copy iCloud Link. Give that link to the bot:
+
+```bash
+HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # stored on the stack; later deploys keep it
+```
+
+Locally, put `HEALTH_SHORTCUT_URL` and `PUBLIC_URL` (the address phones reach this machine on) in `.env`.
+
+**In chat**: "connect apple health" makes the bot text the shortcut link, the person's private sync link and the
+automation steps (one-on-one chats only; in a group it asks them to message it directly). The automation is what
+makes it hands-free, and each person adds it once, since automations can't be shared by link: Shortcuts →
+Automation → New → Message → Sender: the bot → Run Immediately → Pie Sync. From then on every text from the bot
+runs the sync, which is right after they logged something and while the phone is unlocked.
 
 ## Layout
 

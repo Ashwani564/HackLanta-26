@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { getDayByKey, keyFor, today } from "./day.js";
 import { getState, putState } from "./store.js";
 
-export type PendingMeal = { id: string; name: string; calories: number; protein: number; at: string };
+export type PendingMeal = { id: string; name: string; calories: number; protein: number; carbs?: number; fat?: number; at: string };
 export type HealthMetrics = { date: string; activeKcal?: number; steps?: number; weightKg?: number; updatedAt: string };
 type Synced = { date: string; ids: string[] };
 
@@ -31,6 +31,43 @@ export async function syncTokenFor(userId: string): Promise<string> {
   return token;
 }
 
+// Where the phone reaches us. Set PUBLIC_URL locally; Lambda has no way to know its own Function URL up
+// front, so it learns it from the first webhook that arrives (lambda.ts).
+let publicBase = process.env.PUBLIC_URL?.replace(/\/+$/, "");
+export const setPublicBase = (url: string) => {
+  publicBase ??= url.replace(/\/+$/, "");
+};
+
+/** The setup texts, one paragraph per bubble. The sync link gets a bubble to itself so it's easy to copy. */
+export function connectText(shortcutUrl: string, syncLink: string): string {
+  return [
+    "ok let's hook me up to apple health, takes a minute",
+    `add this shortcut first: ${shortcutUrl}`,
+    "when it asks for your link, paste this one. it's private to you, don't share it",
+    syncLink,
+    "last thing so it runs by itself: shortcuts app, automation tab, new automation, message, pick me as the sender, run immediately, then choose pie sync",
+    "after that whatever you log with me shows up in health",
+  ].join("\n\n");
+}
+
+/**
+ * What to send when someone asks to connect Apple Health. The sync link is a credential, so it only ever
+ * goes to a one-on-one chat; in a group the person is asked to message the bot directly. `said` is what
+ * the chat history (and so the model) remembers, which never includes the link.
+ */
+export async function connectHealth(userId: string, inGroup: boolean): Promise<{ text: string; said: string } | { error: string }> {
+  if (inGroup) {
+    const text = "dm me and i'll set that up, the link is just for you";
+    return { text, said: text };
+  }
+  const shortcutUrl = process.env.HEALTH_SHORTCUT_URL;
+  if (!shortcutUrl || !publicBase) return { error: "apple health sync isn't set up on this bot yet" };
+  return {
+    text: connectText(shortcutUrl, `${publicBase}/health/${await syncTokenFor(userId)}`),
+    said: "(sent the apple health setup steps and their private sync link)",
+  };
+}
+
 const syncedIds = async (key: string, date: string) => {
   const synced = await getState<Synced>(syncedKey(key));
   return synced?.date === date ? synced.ids : [];
@@ -43,7 +80,13 @@ export async function pendingMeals(key: string): Promise<PendingMeal[]> {
   const done = new Set(await syncedIds(key, day.date));
   return day.meals
     .filter((m) => !done.has(m.at))
-    .map((m) => ({ id: m.at, name: m.name, calories: m.calories, protein: m.protein, at: m.at }));
+    .map((m) => ({
+      id: m.at, name: m.name, calories: m.calories, protein: m.protein,
+      // Left out when unknown, so the shortcut skips them instead of writing a made-up zero to Health.
+      ...(m.carbs !== undefined && { carbs: m.carbs }),
+      ...(m.fat !== undefined && { fat: m.fat }),
+      at: m.at,
+    }));
 }
 
 /**

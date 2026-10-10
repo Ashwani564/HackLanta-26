@@ -16,6 +16,10 @@ Parameters:
     Type: String
     Default: ""
     Description: Layer from bot/scripts/build-ffmpeg-layer.sh. Empty means voice notes are off.
+  HealthShortcutUrl:
+    Type: String
+    Default: ""
+    Description: iCloud link of the shared "Pie Sync" shortcut (bot/README.md). Empty means Apple Health sync is off.
   PhotonSecretName:
     Type: String
     Default: photon/project-secret
@@ -112,6 +116,7 @@ Resources:
           STATE_TABLE: !Ref StateTable
           PHOTON_SECRET_ID: !Ref PhotonSecretName
           BOT_TIMEZONE: America/New_York
+          HEALTH_SHORTCUT_URL: !Ref HealthShortcutUrl
           POLL_CHAIN_MS: "240000"
           NODE_OPTIONS: --enable-source-maps
 

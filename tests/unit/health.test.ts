@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { keyFor, logMeal } from "../../bot/src/day.js";
-import { getMetrics, handleHealthRequest, pendingMeals, syncTokenFor } from "../../bot/src/health.js";
+import { connectHealth, getMetrics, handleHealthRequest, pendingMeals, setPublicBase, syncTokenFor } from "../../bot/src/health.js";
 
 // No STATE_TABLE here, so store.ts keeps everything in memory. Each test uses its own person.
 let n = 0;
@@ -75,6 +75,41 @@ test("ack takes the ids as a list or as the newline-joined text Shortcuts sends"
   assert.deepEqual((await call("POST", token, "ack", { ids: "" })).body, { acked: 0 });
   assert.equal((await call("POST", token, "ack", { ids: 5 })).status, 400);
   assert.equal((await handleHealthRequest("POST", `/health/${token}/ack`, "not json")).status, 400);
+});
+
+test("carbs and fat are sent when they were estimated, and left out (not zeroed) when they weren't", async () => {
+  const user = person();
+  const token = await syncTokenFor(user);
+  await logMeal(user, { name: "Pad thai", calories: 700, protein: 25, carbs: 90, fat: 0, price: 13 });
+  await tick();
+  await logMeal(user, { name: "Mystery snack", calories: 150, protein: 3, price: 0 });
+  const [full, bare] = mealsOf(await call("GET", token, "pending")) as Record<string, unknown>[];
+  assert.equal(full!.carbs, 90);
+  assert.equal(full!.fat, 0); // a real zero is kept
+  assert.ok(!("carbs" in bare!) && !("fat" in bare!));
+});
+
+test("connecting Apple Health: off until configured, link only one-on-one, and never remembered", async () => {
+  const user = person();
+  delete process.env.HEALTH_SHORTCUT_URL;
+  assert.deepEqual(await connectHealth(user, false), { error: "apple health sync isn't set up on this bot yet" });
+
+  process.env.HEALTH_SHORTCUT_URL = "https://www.icloud.com/shortcuts/abc123";
+  setPublicBase("https://bot.example.test/");
+  const token = await syncTokenFor(user);
+
+  // In a group nothing private is sent, whatever is configured.
+  const group = await connectHealth(user, true);
+  assert.ok("text" in group && !group.text.includes(token) && !group.text.includes("http"));
+
+  const out = await connectHealth(user, false);
+  assert.ok("text" in out);
+  const bubbles = out.text.split("\n\n");
+  assert.ok(bubbles.includes(`https://bot.example.test/health/${token}`), "the sync link is a bubble of its own");
+  assert.ok(out.text.includes("https://www.icloud.com/shortcuts/abc123"));
+  assert.ok(!out.said.includes(token) && !out.said.includes("http"), "history never holds the link");
+  // The link that was sent is the one the phone can actually use.
+  assert.equal((await handleHealthRequest("GET", new URL(bubbles.find((b) => b.includes("/health/"))!).pathname + "/pending")).status, 200);
 });
 
 test("one person's token never shows another person's meals", async () => {

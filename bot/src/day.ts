@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { getState, putState } from "./store.js";
 
 export type Goals = { calories: number; protein: number; budget: number };
-export type Meal = { name: string; calories: number; protein: number; price: number; at: string };
+// carbs and fat are only sent on to Apple Health; they're missing when nobody estimated them.
+export type Meal = { name: string; calories: number; protein: number; carbs?: number; fat?: number; price: number; at: string };
 export type Day = { key: string; date: string; goals: Goals; meals: Meal[] };
 
 const DEFAULT_GOALS: Goals = { calories: 2000, protein: 120, budget: 40 };

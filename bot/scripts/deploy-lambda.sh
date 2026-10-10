@@ -40,7 +40,8 @@ if [[ "${1:-}" != "--code" ]]; then
   [[ -z "$FFMPEG_LAYER" ]] && echo "    (no ffmpeg layer yet: voice notes stay off. Run scripts/build-ffmpeg-layer.sh)"
   aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file ../infra/bot-lambda.yaml \
     --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
-    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER"
+    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER" \
+    ${HEALTH_SHORTCUT_URL:+"HealthShortcutUrl=$HEALTH_SHORTCUT_URL"}  # only when set, so a plain deploy keeps the stored link
 fi
 
 echo "==> uploading code"
