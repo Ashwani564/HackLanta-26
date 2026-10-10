@@ -23,3 +23,9 @@ export async function sendDmCard(app: any, phone: string, url: string): Promise<
   const dm = await im.space.create(await im.user(phone));
   await dm.send(appCard(url));
 }
+
+/** Make sure a chat with this person exists, without sending anything. Returns its GUID (polls and location requests need it). */
+export async function openDm(app: any, phone: string): Promise<string> {
+  const im = imessage(app as any);
+  return (await im.space.create(await im.user(phone))).id;
+}
