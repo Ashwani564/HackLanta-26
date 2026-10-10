@@ -39,14 +39,21 @@ export const setPublicBase = (url: string) => {
   publicBase ??= url.replace(/\/+$/, "");
 };
 
-/** The setup texts, one paragraph per bubble. The sync link gets a bubble to itself so it's easy to copy. */
-export function connectText(shortcutUrl: string, syncLink: string): string {
+/** The shared shortcut's iCloud link, if one has been published. Anything that isn't an https link counts as unset. */
+const shortcutLink = () => {
+  const url = process.env.HEALTH_SHORTCUT_URL?.trim();
+  return url?.startsWith("https://") ? url : undefined;
+};
+
+/**
+ * The setup texts, one paragraph per bubble. The person's sync link doubles as their setup page (opened in
+ * a browser it shows the steps), so that one link, in a bubble of its own, is all they need.
+ */
+export function connectText(syncLink: string): string {
   return [
     "ok let's hook me up to apple health, takes a minute",
-    `add this shortcut first: ${shortcutUrl}`,
-    "when it asks for your link, paste this one. it's private to you, don't share it",
+    "open this and do the three steps. it's your private link, so don't pass it on",
     syncLink,
-    "last thing so it runs by itself: shortcuts app, automation tab, new automation, message, pick me as the sender, run immediately, then choose pie sync",
     "after that whatever you log with me shows up in health",
   ].join("\n\n");
 }
@@ -61,10 +68,9 @@ export async function connectHealth(userId: string, inGroup: boolean): Promise<{
     const text = "dm me and i'll set that up, the link is just for you";
     return { text, said: text };
   }
-  const shortcutUrl = process.env.HEALTH_SHORTCUT_URL;
-  if (!shortcutUrl || !publicBase) return { error: "apple health sync isn't set up on this bot yet" };
+  if (!shortcutLink() || !publicBase) return { error: "apple health sync isn't set up on this bot yet" };
   return {
-    text: connectText(shortcutUrl, `${publicBase}/health/${await syncTokenFor(userId)}`),
+    text: connectText(`${publicBase}/health/${await syncTokenFor(userId)}`),
     said: "(sent the apple health setup steps and their private sync link)",
   };
 }
@@ -180,25 +186,99 @@ export function dayGoals(day: Day, metrics?: HealthMetrics): Goal[] {
 
 // ---------- HTTP routes (shared by the local web server and the Lambda Function URL) ----------
 
-export type HealthResponse = { status: number; body: unknown };
+/** `html` is set for the setup page; everything else answers with `body` as JSON. */
+export type HealthResponse = { status: number; body?: unknown; html?: string };
 
-const ROUTE = /^\/health\/([A-Za-z0-9_-]{16,64})\/(pending|ack|metrics)\/?$/;
-const METHODS = { pending: "GET", ack: "POST", metrics: "POST" } as const;
+const ROUTE = /^\/health\/([A-Za-z0-9_-]{16,64})(?:\/(pending|ack|metrics))?\/?$/;
+const METHODS = { setup: "GET", pending: "GET", ack: "POST", metrics: "POST" } as const;
 
 export const isHealthPath = (path: string) => path.startsWith("/health/");
 
+/** Status, headers and text for either kind of answer. Nothing here may be cached, indexed or leaked by a referrer. */
+export function healthReply(out: HealthResponse): { status: number; headers: Record<string, string>; text: string } {
+  const common = { "cache-control": "no-store", "referrer-policy": "no-referrer", "x-robots-tag": "noindex" };
+  return out.html !== undefined
+    ? { status: out.status, headers: { ...common, "content-type": "text/html; charset=utf-8" }, text: out.html }
+    : { status: out.status, headers: { ...common, "content-type": "application/json" }, text: JSON.stringify(out.body) };
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
 /**
- *   GET  /health/<token>/pending   -> { meals: [{ id, name, calories, protein, at }] }
+ * The page a person sees when they open their sync link in a browser. The link itself is filled in by the
+ * page from its own address, so the server never has to know (or print) where it is being served from.
+ */
+export function setupPage(shortcutUrl: string | undefined): string {
+  const add = shortcutUrl
+    ? `<a class="btn" href="${esc(shortcutUrl)}">Add the Pie Sync shortcut</a><small>When it asks for your link, paste it.</small>`
+    : `<small>The shortcut hasn't been published for this bot yet.</small>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Connect Apple Health</title><style>
+body{margin:0;background:#FFF6E5;color:#2B1B17;font:16px -apple-system,system-ui,sans-serif;padding:16px;max-width:520px}
+h1{font:28px Phosphate,Futura,"Arial Black",sans-serif;letter-spacing:2px;color:#C0392B;margin:8px 0 4px}
+p,small{color:#7A4E2D}small{display:block;margin-top:6px;font-size:13px}
+ol{padding:0;margin:16px 0;list-style:none;counter-reset:n}li{counter-increment:n;padding:16px 0;border-bottom:2px dashed #E4CBA8}
+li b:first-child::before{content:counter(n) ". "}
+input{width:100%;box-sizing:border-box;margin:8px 0;padding:10px;border:2px solid #E4CBA8;border-radius:10px;background:#fff;font:13px ui-monospace,monospace;color:#2B1B17}
+button,.btn{display:inline-block;margin-top:4px;padding:10px 16px;border:0;border-radius:10px;background:#C0392B;color:#fff;font:600 16px -apple-system,system-ui,sans-serif;text-decoration:none}
+</style></head><body>
+<h1>CONNECT APPLE HEALTH</h1><p>Three steps, about a minute. Meals you log in chat then show up in Health.</p>
+<ol>
+<li><b>Copy your link</b><input id="link" readonly><button id="copy">Copy</button><small>It's private to you. Don't share it.</small></li>
+<li><b>Add the shortcut</b><br>${add}</li>
+<li><b>Make it automatic</b><small>Shortcuts app → Automation → New Automation → Message → Sender: the bot → Run Immediately → Pie Sync.</small></li>
+</ol>
+<script>
+const link = location.origin + location.pathname.replace(/\\/+$/, "");
+const box = document.getElementById("link"), btn = document.getElementById("copy");
+box.value = link;
+btn.onclick = async () => {
+  try { await navigator.clipboard.writeText(link); } catch { box.select(); document.execCommand("copy"); }
+  btn.textContent = "Copied";
+};
+</script></body></html>`;
+}
+
+/**
+ * Health Auto Export (an App Store app) can POST Health data to a URL on a schedule, as
+ * { data: { metrics: [{ name, units, data: [{ qty, date: "2024-02-06 14:30:00 -0800" }] }] } }.
+ * Turns that into the fields the shortcut sends (today's active energy and steps, summed), or returns
+ * undefined when the body isn't in that shape.
+ */
+export function fromHealthAutoExport(body: Record<string, unknown>, day = today()): Record<string, unknown> | undefined {
+  const metrics = (body.data as { metrics?: unknown } | undefined)?.metrics;
+  if (!Array.isArray(metrics)) return undefined;
+  const sumToday = (name: string): { total: number; units: string } | undefined => {
+    const metric = metrics.find((m) => m?.name === name);
+    // Dates are in the phone's own time zone, so the day is simply the front of the string.
+    const points = (Array.isArray(metric?.data) ? metric.data : []).filter(
+      (p: any) => typeof p?.date === "string" && p.date.startsWith(day) && typeof p.qty === "number" && Number.isFinite(p.qty),
+    );
+    return points.length > 0 ? { total: points.reduce((a: number, p: any) => a + p.qty, 0), units: String(metric.units ?? "") } : undefined;
+  };
+  const energy = sumToday("active_energy");
+  const steps = sumToday("step_count");
+  return {
+    ...(energy && { active_kcal: /^kj$/i.test(energy.units) ? energy.total / 4.184 : energy.total }),
+    ...(steps && { steps: steps.total }),
+  };
+}
+
+/**
+ *   GET  /health/<token>           -> the setup page (HTML)
+ *   GET  /health/<token>/pending   -> { meals: [{ id, name, calories, protein, carbs?, fat?, at }] }
  *   POST /health/<token>/ack       { ids: [...] }                              -> { acked: n }
  *   POST /health/<token>/metrics   { active_kcal, steps, weight_kg | weight_lb } -> { ok: true }
+ *                                  (or a Health Auto Export body, see fromHealthAutoExport)
  * An unknown token looks exactly like an unknown path.
  */
 export async function handleHealthRequest(method: string, path: string, rawBody = ""): Promise<HealthResponse> {
   const match = path.split("?")[0]!.match(ROUTE);
   const key = match ? await getState<string>(tokenKey(match[1]!)) : undefined;
   if (!match || !key) return { status: 404, body: { error: "not found" } };
-  const route = match[2] as keyof typeof METHODS;
+  const route = (match[2] ?? "setup") as keyof typeof METHODS;
   if (method.toUpperCase() !== METHODS[route]) return { status: 405, body: { error: `use ${METHODS[route]}` } };
+  if (route === "setup") return { status: 200, html: setupPage(shortcutLink()) };
   if (route === "pending") return { status: 200, body: { meals: await pendingMeals(key) } };
 
   let body: unknown;
@@ -217,7 +297,7 @@ export async function handleHealthRequest(method: string, path: string, rawBody 
     const clean = ids.filter((id): id is string => typeof id === "string").flatMap((id) => id.split("\n")).map((id) => id.trim()).filter(Boolean);
     return { status: 200, body: { acked: await ackMeals(key, clean) } };
   }
-  return (await saveMetrics(key, fields))
+  return (await saveMetrics(key, fromHealthAutoExport(fields) ?? fields))
     ? { status: 200, body: { ok: true } }
     : { status: 400, body: { error: "no usable numbers (active_kcal, steps, weight_kg or weight_lb)" } };
 }

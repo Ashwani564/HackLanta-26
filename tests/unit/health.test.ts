@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { keyFor, logMeal, type Day } from "../../bot/src/day.js";
 import {
-  adjustedCalories, connectHealth, dayGoals, getMetrics, handleHealthRequest, healthSummary, pendingMeals, setPublicBase, syncTokenFor,
+  adjustedCalories, connectHealth, dayGoals, fromHealthAutoExport, getMetrics, handleHealthRequest, healthReply, healthSummary, pendingMeals,
+  setPublicBase, setupPage, syncTokenFor,
   type HealthMetrics,
 } from "../../bot/src/health.js";
 
@@ -13,7 +14,7 @@ const tick = () => new Promise((r) => setTimeout(r, 3)); // meal ids are timesta
 
 const call = (method: string, token: string, route: string, body?: unknown) =>
   handleHealthRequest(method, `/health/${token}/${route}`, body === undefined ? "" : JSON.stringify(body));
-const mealsOf = (res: { body: unknown }) => (res.body as { meals: { id: string; name: string }[] }).meals;
+const mealsOf = (res: { body?: unknown }) => (res.body as { meals: { id: string; name: string }[] }).meals;
 
 test("a person keeps one sync token, and it isn't derived from their number", async () => {
   const user = person();
@@ -109,7 +110,7 @@ test("connecting Apple Health: off until configured, link only one-on-one, and n
   assert.ok("text" in out);
   const bubbles = out.text.split("\n\n");
   assert.ok(bubbles.includes(`https://bot.example.test/health/${token}`), "the sync link is a bubble of its own");
-  assert.ok(out.text.includes("https://www.icloud.com/shortcuts/abc123"));
+  assert.equal(bubbles.length, 4, "short enough to read in a text thread");
   assert.ok(!out.said.includes(token) && !out.said.includes("http"), "history never holds the link");
   // The link that was sent is the one the phone can actually use.
   assert.equal((await handleHealthRequest("GET", new URL(bubbles.find((b) => b.includes("/health/"))!).pathname + "/pending")).status, 200);
@@ -173,4 +174,58 @@ test("a long walk can take the 'go lighter' hint away again", () => {
   const day = dayWith({ calories: 1700, protein: 110 });
   assert.deepEqual(dayGoals(day, burned(200)), ["low_cal"]); // 100 credited: 400 left
   assert.deepEqual(dayGoals(day, burned(1000)), []); // 500 credited: 800 left
+});
+
+// ---------- setup page and Health Auto Export ----------
+
+test("opening the sync link in a browser shows the setup page, which never prints the token", async () => {
+  const token = await syncTokenFor(person());
+  process.env.HEALTH_SHORTCUT_URL = "https://www.icloud.com/shortcuts/abc123";
+  const out = await handleHealthRequest("GET", `/health/${token}`);
+  assert.equal(out.status, 200);
+  assert.ok(out.html?.includes('href="https://www.icloud.com/shortcuts/abc123"'));
+  assert.ok(out.html?.includes("Run Immediately"));
+  assert.ok(!out.html?.includes(token), "the page reads the link from its own address instead");
+  assert.equal((await handleHealthRequest("GET", `/health/${token}/`)).status, 200);
+  assert.equal((await handleHealthRequest("POST", `/health/${token}`)).status, 405);
+  assert.equal((await handleHealthRequest("GET", `/health/${"B".repeat(24)}`)).status, 404);
+
+  const reply = healthReply(out);
+  assert.ok(reply.headers["content-type"]!.startsWith("text/html"));
+  assert.equal(reply.headers["referrer-policy"], "no-referrer"); // tapping the iCloud link must not leak this page's address
+  assert.equal(reply.headers["cache-control"], "no-store");
+  assert.equal(healthReply({ status: 200, body: { ok: true } }).text, '{"ok":true}');
+});
+
+test("the setup page only links to an https shortcut, and escapes it", async () => {
+  assert.ok(setupPage(undefined).includes("hasn't been published"));
+  assert.ok(setupPage('https://x.test/a"><script>alert(1)</script>').includes("&#34;&#62;&#60;script"));
+  const token = await syncTokenFor(person());
+  process.env.HEALTH_SHORTCUT_URL = "javascript:alert(1)";
+  assert.ok(!(await handleHealthRequest("GET", `/health/${token}`)).html?.includes("javascript:"));
+  process.env.HEALTH_SHORTCUT_URL = "https://www.icloud.com/shortcuts/abc123";
+});
+
+test("a Health Auto Export body becomes today's active calories and steps", () => {
+  const point = (qty: number, date: string) => ({ qty, date });
+  const body = { data: { workouts: [], metrics: [
+    { name: "active_energy", units: "kcal", data: [point(300, "2026-10-09 00:00:00 -0400"), point(250.5, "2026-10-10 00:00:00 -0400"), point(100, "2026-10-10 12:00:00 -0400")] },
+    { name: "step_count", units: "count", data: [point(8042, "2026-10-10 00:00:00 -0400")] },
+    { name: "heart_rate", units: "bpm", data: [{ Avg: 70, date: "2026-10-10 00:00:00 -0400" }] },
+  ] } };
+  assert.deepEqual(fromHealthAutoExport(body, "2026-10-10"), { active_kcal: 350.5, steps: 8042 });
+  assert.deepEqual(fromHealthAutoExport(body, "2026-10-11"), {}); // nothing for that day: no numbers, not zeros
+  const kj = { data: { metrics: [{ name: "active_energy", units: "kJ", data: [point(4184, "2026-10-10 00:00:00 -0400")] }] } };
+  assert.deepEqual(fromHealthAutoExport(kj, "2026-10-10"), { active_kcal: 1000 });
+  assert.equal(fromHealthAutoExport({ active_kcal: 400 }), undefined); // the shortcut's own body is left alone
+});
+
+test("the metrics route takes a Health Auto Export body as it is", async () => {
+  const user = person();
+  const token = await syncTokenFor(user);
+  const now = new Date().toLocaleDateString("en-CA", { timeZone: process.env.BOT_TIMEZONE ?? "America/New_York" });
+  const body = { data: { metrics: [{ name: "active_energy", units: "kcal", data: [{ qty: 512, date: `${now} 00:00:00 -0400` }] }] } };
+  assert.equal((await call("POST", token, "metrics", body)).status, 200);
+  assert.equal((await getMetrics(keyFor(user)))?.activeKcal, 512);
+  assert.equal((await call("POST", token, "metrics", { data: { metrics: [] } })).status, 400);
 });

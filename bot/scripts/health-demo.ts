@@ -39,7 +39,7 @@ const lan = Object.values(networkInterfaces())
 
 startWeb();
 console.log(`
-sync link for the phone (same Wi-Fi):
+sync link for the phone (same Wi-Fi). Open it in Safari for the setup page and a Copy button:
 ${lan.map((l) => `  ${l}`).join("\n") || "  (no network address found)"}
 
 from this machine:

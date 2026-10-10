@@ -87,6 +87,7 @@ Apple Health has no cloud API, so a Shortcut on the person's iPhone does the syn
 bot (`src/health.ts`), authenticated by a per-person token in the path:
 
 ```
+GET  /health/<token>            the person's setup page (their sync link, opened in a browser)
 GET  /health/<token>/pending    meals logged in chat today that aren't in Health yet
 POST /health/<token>/ack        { ids }  mark those meals as written
 POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  numbers read from Health
@@ -97,6 +98,8 @@ POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  n
 ```bash
 npx tsx scripts/health-demo.ts     # logs two sample meals, prints the sync link; Enter logs another
 ```
+
+Open the printed link in Safari on the phone: it's the setup page, with a Copy button for the link itself.
 
 **Build the "Pie Sync" shortcut** (Shortcuts app → + → name it Pie Sync):
 
@@ -140,8 +143,9 @@ HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # sto
 
 Locally, put `HEALTH_SHORTCUT_URL` and `PUBLIC_URL` (the address phones reach this machine on) in `.env`.
 
-**In chat**: "connect apple health" makes the bot text the shortcut link, the person's private sync link and the
-automation steps (one-on-one chats only; in a group it asks them to message it directly). The automation is what
+**In chat**: "connect apple health" makes the bot text the person their private sync link (one-on-one chats only;
+in a group it asks them to message it directly). Opened in a browser, that link is a setup page with three steps:
+copy the link, add the shortcut, add the automation. The automation is what
 makes it hands-free, and each person adds it once, since automations can't be shared by link: Shortcuts →
 Automation → New → Message → Sender: the bot → Run Immediately → Pie Sync. From then on every text from the bot
 runs the sync, which is right after they logged something and while the phone is unlocked.
@@ -150,6 +154,11 @@ runs the sync, which is right after they logged something and while the phone is
 up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or
 behind on protein the dish ranking leans lighter or higher-protein. That's a nudge to the order, never a filter;
 allergy and diet filtering doesn't look at any of this. The numbers are kept for two days.
+
+**Health Auto Export instead of the read half**: that App Store app can send the same numbers on a schedule, with
+no shortcut actions to build. In it: Automations → New Automation → REST API, URL `<sync link>/metrics`, Data Type
+Health Metrics (select only Active Energy and Step Count), Export Format JSON, Summarize Data on, Date Range Today.
+It only reads; writing meals into Health still needs the shortcut.
 
 ## Layout
 

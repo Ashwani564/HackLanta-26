@@ -2,15 +2,15 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { dayJpeg } from "./day-art.js";
 import { TIME_ZONE, getDayByKey, totals, type Day } from "./day.js";
-import { handleHealthRequest, isHealthPath } from "./health.js";
+import { handleHealthRequest, healthReply, isHealthPath } from "./health.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
 export function startWeb() {
   createServer(async (req, res) => {
     if (isHealthPath(req.url ?? "")) {
-      const out = await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req));
-      res.writeHead(out.status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(out.body));
+      const out = healthReply(await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req)));
+      res.writeHead(out.status, out.headers).end(out.text);
       return;
     }
     const m = req.url?.match(/^\/day\/([0-9a-f]{12})(\/pie\.jpg)?(?:\?.*)?$/);
