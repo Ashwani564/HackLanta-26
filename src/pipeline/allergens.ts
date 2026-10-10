@@ -83,7 +83,8 @@ export function parseCatalogAllergens(cell: string): string[] {
   const out = new Set<string>();
   for (const raw of cell.split("|")) {
     const token = raw.trim().toLowerCase();
-    if (!token) continue;
+    // "none" marks a deliberately empty list (the cell is not blank, so allergensKnown stays true).
+    if (!token || token === "none") continue;
     const hit = SYNONYMS[token];
     if (hit) hit.forEach((a) => out.add(a));
     else out.add(token);

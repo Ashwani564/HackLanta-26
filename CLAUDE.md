@@ -72,6 +72,7 @@ allergens, allergen_source, diet_tags, scraped_at
 - `allergens`, `diet_tags`: pipe-separated (`peanut|soy`, `vegan|gluten_free`).
 - `allergen_source`: `chart` | `menu_text` | `inferred`.
 - Blank = unknown. Never fill a blank with a guess.
+  - Exception (user-approved): Starbucks and Saxby's have no published prices and gaps in their allergen lines. `data/enrich_gaps.py` fills ONLY blanks there with synthetic values, always labeled: `price_source=estimated` (shown as "~$5"), `allergen_source=inferred` (cell `none` = inferred empty), `diet_source=inferred` for added vegan/vegetarian/halal. Stated data is never overwritten. Halal is inferred only for meat-free, alcohol-free items; neither chain is certified. Replies must keep treating `inferred` as unconfirmed.
 - Do not cache Google Places details long-term; store `place_id` and re-fetch.
 
 ## DynamoDB tables

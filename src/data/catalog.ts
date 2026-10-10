@@ -92,6 +92,7 @@ export function dishesFromCsv(text: string): Dish[] {
       itemKind: classifyKind(get("category"), get("dish_name")),
       cuisine: cuisinesFor(get("restaurant_id")),
       priceUsd: num(get("price_usd")),
+      priceSource: get("price_source"),
       calories: num(get("calories")),
       proteinG: num(get("protein_g")),
       carbsG: num(get("carbs_g")),
@@ -103,6 +104,7 @@ export function dishesFromCsv(text: string): Dish[] {
       allergensKnown: allergenCell !== "",
       allergenSource: get("allergen_source") as AllergenSource,
       dietTags: list(get("diet_tags")),
+      dietSource: get("diet_source"),
     };
   });
 }

@@ -18,6 +18,8 @@ export interface Dish {
   /** Hand-tagged per restaurant (see data/cuisines.ts). Lets "Thai" and "not Mexican" work. */
   cuisine: string[];
   priceUsd: number | null;
+  /** "scraped" = from the restaurant's menu, "estimated" = typical price we filled in. Absent = scraped. */
+  priceSource?: string;
   calories: number | null;
   proteinG: number | null;
   carbsG: number | null;
@@ -30,6 +32,8 @@ export interface Dish {
   allergensKnown: boolean;
   allergenSource: AllergenSource;
   dietTags: string[];
+  /** "stated" = tags from the restaurant, "inferred" = vegan/vegetarian/halal added by rule. */
+  dietSource?: string;
 }
 
 /** Merged, code-enforced constraints for a request. Built from profiles + the message. */

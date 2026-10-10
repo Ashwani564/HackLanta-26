@@ -71,7 +71,15 @@ test("diet is presence-required; vegetarian accepts vegan; unknown diets match n
   assert.equal(hardFilterReason(dish({ dietTags: ["vegan"] }), { ...none, diets: ["vegetarian"] }), null);
   assert.equal(hardFilterReason(dish({ dietTags: ["vegetarian"] }), { ...none, diets: ["vegan"] }), "diet");
   assert.equal(hardFilterReason(dish({ dietTags: [] }), { ...none, diets: ["vegan"] }), "diet");
-  assert.equal(filterDishes(catalog, { ...none, diets: ["halal"] }).kept.length, 0, "no halal data, so no halal results");
+  // Halal exists only as an inference for Starbucks and Saxby's meat-free items (data/enrich_gaps.py). Anything else
+  // has no halal tag and must never come back, and a halal result must never be a meat dish.
+  const halal = filterDishes(catalog, { ...none, diets: ["halal"] }).kept;
+  assert.ok(halal.length > 0);
+  for (const d of halal) {
+    assert.ok(["starbucks", "saxbys"].includes(d.restaurantId), `${d.dishId} is halal only by inference at the two chains`);
+    assert.equal(d.dietSource, "inferred", d.dishId);
+    assert.ok(d.dietTags.includes("vegetarian") || d.dietTags.includes("vegan"), `${d.dishId}: halal-tagged dishes are meat-free`);
+  }
 });
 
 test("budget excludes over-budget and unknown-price dishes", () => {
