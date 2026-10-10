@@ -38,7 +38,7 @@ const SCHEMA = {
       description:
         "Only what they WANT to eat (cuisine, dish, mood, meal). Remove allergies, diets, dislikes and budget. 'allergic to peanuts, recommend Thai' -> 'Thai food'. Empty string if nothing specific.",
     },
-    allergies: { type: "array", items: { type: "string" }, description: "Allergies stated in THIS message only. Never guess." },
+    allergies: { type: "array", items: { type: "string" }, description: "Allergies stated in THIS message only. Never guess. Also foods they say they do not eat for religious, diet or health reasons ('no pork', 'I don't eat beef'): write them as 'pork' or 'beef'." },
     diets: { type: "array", items: { type: "string" }, description: "Diet restrictions stated in this message: vegan, vegetarian, gluten free, halal, kosher." },
     exclude: { type: "array", items: { type: "string" }, description: "Foods or cuisines they do not want, e.g. 'mexican', 'fries'. 'not Mexican' -> ['mexican']." },
     budget_max_usd: { type: "number", description: "Maximum price per dish in USD if stated." },
