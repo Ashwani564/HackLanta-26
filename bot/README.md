@@ -25,6 +25,14 @@ You can type instead of tapping and it follows along. Other things it does:
 | A friend's contact card | Registers them as a Photon user and texts them an intro. They can reply STOP. |
 | `/reset` | Clears the chat's memory, restrictions and saved location. |
 
+**Planning a meal with friends:** say "schedule dinner today with ashwani and princy" and the bot texts each of them separately
+(they must be registered users). Everyone gets a poll of times; if the picks differ it proposes the middle one and asks the others
+"does 6:30 work?"; then everyone polls on three places that fit **everyone's** allergies and diets, most votes wins. It tells
+everyone once it's locked in and messages you last. People can type instead of tapping ("7 works", "can't tonight"). Quiet people
+get one nudge after 10 minutes and are dropped after 40 (`PLAN_NUDGE_MIN`, `PLAN_GIVE_UP_MIN`). Plans are saved, and an EventBridge
+check every minute (or a 30 s timer when running locally) reads the answers and moves them forward, so they survive restarts.
+Code in `src/plans.ts`; try it without texting anyone: `npx tsx --env-file=.env chat-sim.mts plan`.
+
 **Group chats:** the bot stays quiet unless someone talks to it ("hey bot, where should we eat"). That person's follow-ups
 count for a couple of minutes; everyone else's chatter is dropped before anything reads or stores it. In one-on-one chats it
 always answers. Set `BOT_NAMES` (comma-separated) once the bot has a name. Groups only reach the bot on Photon's Business
@@ -91,6 +99,8 @@ bot/
 │   ├── handler.ts    # message routing, tools, poll loop (send poll -> wait for tap -> next step)
 │   ├── llm.ts        # persona prompt, tools, tool loop on Bedrock, NO_REPLY + safety-claim guard
 │   ├── dining.ts     # nearby restaurants, two dishes, restrictions, the choice polls
+│   ├── plans.ts      # "schedule dinner with…": text each person, settle time and place, report back
+│   ├── dm.ts         # text one person directly
 │   ├── polls.ts      # send a poll, read the vote
 │   ├── findmy.ts     # Find My: ask casually, request card, wait for share
 │   ├── photon.ts     # shared low-level Photon client

@@ -16,6 +16,8 @@ import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./inv
 import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
+import { sendDm } from "./dm.js";
+import { type PlanDeps, handleReply as handlePlanReply, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOC_TTL = 45 * 60;
@@ -24,10 +26,12 @@ const WAIT_MS = 150_000;
 const CHAIN_MS = Number(process.env.POLL_CHAIN_MS ?? 270_000);
 
 /** Build the per-message handler. `app` is the Spectrum instance (needed to open DMs for invites). */
-export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi } = {}) {
+export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi; plans?: PlanDeps } = {}) {
   const locate = deps.locate ?? realLocate;
   const pollApi = deps.polls ?? realPolls;
-  return { handle, invite };
+  const planDeps = deps.plans ?? realPlanDeps(app, sendDm);
+  // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
+  return { handle, invite, tick: () => tickPlans(planDeps) };
 
   async function handle(space: any, message: any) {
   // Read receipts and typing signals are noise for now.
@@ -49,6 +53,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   let queued: PollSpec | undefined;
   // What the person just said (a transcript for voice notes). Used to read a restaurant name straight from their words.
   let currentText = "";
+  // A meal plan started this turn: after replying, keep it moving quickly for a few minutes.
+  let watching: string | undefined;
 
   // A blank line in a reply means "send as a separate text", paced like someone typing.
   const sendBubbles = async (sp: any, text: string) => {
@@ -189,6 +195,12 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         await sendBubbles(space, out.text);
         return { sent: true, sent_text: out.text };
       }
+      case "plan_meal": {
+        if (message.platform !== "imessage" || !message.sender) return { error: "planning only works over iMessage" };
+        const out = await startPlan(planDeps, { phone: message.sender.id, chatGuid: space.id }, args);
+        if ("planId" in out) watching = out.planId;
+        return out;
+      }
       case "get_directions": {
         const dir = await directionsLink(space.id);
         if (!dir.url) return { error: dir.error };
@@ -210,6 +222,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     const next = queued;
     queued = undefined;
     await runPolls(next);
+    if (watching) await watchPlan(planDeps, watching, Number(process.env.PLAN_WATCH_MS ?? 200_000));
   };
 
   try {
@@ -230,6 +243,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           console.log(`  opted out ${message.sender.id}`);
           return;
         }
+        // Someone being asked about a meal plan may answer by typing instead of tapping.
+        if (message.platform === "imessage" && message.sender && !isGroupChat(space.id) && (await handlePlanReply(planDeps, message.sender.id, text))) return;
         await respond(text);
         break;
       }

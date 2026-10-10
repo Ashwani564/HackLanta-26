@@ -2,6 +2,7 @@
 // Usage: tsx --env-file=.env chat-sim.mts <scenario>
 import { createHandler } from "./src/handler.ts";
 import { casualFoodReply } from "./src/vision.ts";
+import { realPlanDeps } from "./src/plans.ts";
 
 const where: Record<string, any> = {
   gsu: { status: "sharing", latitude: 33.7536, longitude: -84.3868, place: "Georgia State University", fullAddress: "Peachtree Center Ave SE, Atlanta, GA", ageMinutes: 0, justShared: true },
@@ -33,7 +34,41 @@ const polls = {
     return opt.value;
   },
 };
-const { handle } = createHandler({}, {
+// Meal planning: pretend people. Texts and polls are printed, taps are scripted; the places, the model and the
+// database are real. Nobody is actually messaged.
+const people = { "+15550002222": "Ashwani", "+15550003333": "Princy" } as Record<string, string>;
+const planAnswers = new Map<string, string>();
+const planPolls: any[] = [];
+const planDeps = {
+  ...realPlanDeps({}, async (_app: any, phone: string, text: string) => {
+    console.log(`   📨 to ${people[phone] ?? phone}: ${text.replace(/\n+/g, " / ")}`);
+    return `any;-;${phone}`;
+  }),
+  polls: {
+    send: async (chatGuid: string, spec: any) => {
+      const rec = { ...spec, guid: `p${planPolls.length}`, chatGuid, optionIds: Object.fromEntries(spec.options.map((o: any, i: number) => [`o${i}`, o.value])) };
+      planPolls.push(rec);
+      console.log(`   📊 poll to ${people[chatGuid.replace("any;-;", "")] ?? chatGuid}: "${spec.title}"  [ ${spec.options.map((o: any) => o.label).join("  |  ")} ]`);
+      return rec;
+    },
+    read: async (rec: any) => planAnswers.get(rec.guid),
+  },
+  users: async () => [
+    { firstName: "Ashar", lastName: "M", phoneNumber: "+15550001111" },
+    { firstName: "Ashwani", lastName: "M", phoneNumber: "+15550002222" },
+    { firstName: "Princy", lastName: "M", phoneNumber: "+15550003333" },
+  ],
+  organizerOrigin: async () => ({ lat: 33.7536, lng: -84.3868 }),
+};
+const tap = (who: string, title: string, optionLabel: string) => {
+  const rec = [...planPolls].reverse().find((p) => people[p.chatGuid.replace("any;-;", "")] === who && p.title.startsWith(title));
+  const opt = rec.options.find((o: any) => o.label.startsWith(optionLabel));
+  console.log(`   👆 ${who} taps "${opt.label}" on "${rec.title}"`);
+  planAnswers.set(rec.guid, opt.value);
+};
+process.env.PLAN_WATCH_MS = "0";
+const { handle, tick } = createHandler({}, {
+  plans: planDeps as any,
   polls,
   locate: async (_c: string, _a: string, o: any) => {
     if (loc.status !== "sharing") await o.say("send me your location real quick so i can see what's around you");
@@ -57,6 +92,7 @@ const scripts: Record<string, string[]> = {
   "polls-skip": ["im starving"],
   typed: ["hungry", "queen tea", "the beef rice", "yeah"],
   friend: ["Need a place to eat with my friend", "hey"],
+  plan: ["schedule dinner today with ashwani and princy"],
   repeat: ["hungry", "queen tea", "queen tea", "sure", "which one is cheaper"],
   group: ["anyone want tacos", "other: lol i'm so tired", "hey bot im hungry", "queen tea", "other: i'm good", "ok thanks"],
   price: ["hungry", "mr fries man", "strikeout wingz", "mangos", "stir house", "saxbys", "starbucks"],
@@ -68,6 +104,20 @@ const scripts: Record<string, string[]> = {
   nodirections: ["hungry af", "india eats", "nah im good"],
 };
 for (const m of scripts[scenario] ?? scripts.basic!) await say(m);
+
+if (scenario === "plan") {
+  console.log("\n--- a minute later: Ashwani and Princy answer the time poll ---");
+  tap("Ashwani", "what time", "6:30 PM");
+  tap("Princy", "what time", "7:30 PM");
+  await tick();
+  console.log("\n--- Princy says 6:30 is fine ---");
+  tap("Princy", "does 6:30", "yeah");
+  await tick();
+  console.log("\n--- they vote on the place ---");
+  tap("Ashwani", "where", planPolls.filter((p) => p.title === "where to eat?")[0].options[0].label);
+  tap("Princy", "where", planPolls.filter((p) => p.title === "where to eat?")[1].options[0].label);
+  await tick();
+}
 
 if (scenario === "photo") {
   console.log("\n📷 photo replies:");

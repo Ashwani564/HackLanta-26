@@ -61,6 +61,17 @@ export async function mergeRestrictions(spaceId: string, args: { allergies?: unk
   return merged;
 }
 
+/** What this chat has said it can't eat (empty if nothing yet). */
+export async function restrictionsFor(spaceId: string): Promise<Restrictions> {
+  return (await getState<Restrictions>(profileKey(spaceId))) ?? { allergies: [], diets: [] };
+}
+
+/** Everyone's restrictions combined: a dish has to work for all of them. */
+export const unionRestrictions = (all: readonly Restrictions[]): Restrictions => ({
+  allergies: [...new Set(all.flatMap((r) => r.allergies))].sort(),
+  diets: [...new Set(all.flatMap((r) => r.diets))].sort(),
+});
+
 export const clearRestrictions = (spaceId: string) => putState(profileKey(spaceId), { allergies: [], diets: [] }, 7 * 86400);
 
 const EMPTY_PARSE: ParsedMessage = { intent: "food_request", positiveQuery: "", allergies: [], diets: [], exclude: [] };

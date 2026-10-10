@@ -24,7 +24,7 @@ const lambda = new LambdaClient({ region: process.env.AWS_REGION ?? "us-east-2" 
 const MAX_HANDLER_MS = 290_000;
 
 // Reused across warm invocations.
-let bot: Promise<{ app: any; handle: (space: any, message: any) => Promise<void> }> | undefined;
+let bot: Promise<{ app: any; handle: (space: any, message: any) => Promise<void>; tick: () => Promise<void> }> | undefined;
 const getBot = () =>
   (bot ??= (async () => {
     await loadSecrets();
@@ -33,12 +33,19 @@ const getBot = () =>
       webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET,
       options: { logLevel: (process.env.LOG_LEVEL as "info" | "debug") ?? "info" },
     });
-    return { app, handle: createHandler(app).handle };
+    const handler = createHandler(app);
+    return { app, handle: handler.handle, tick: handler.tick };
   })());
 
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
+  // Every minute (EventBridge): move "schedule dinner with…" plans along.
+  if (event?.kind === "tick") {
+    await loadSecrets();
+    await (await getBot()).tick();
+    return { ok: true };
+  }
 
   // Function URL request from Photon.
   if (event?.requestContext?.http?.method !== "POST") return { statusCode: 200, body: "dining-agent webhook" };

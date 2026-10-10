@@ -62,4 +62,14 @@ async function wait(rec: PollRecord, opts: { timeoutMs: number }): Promise<strin
   return undefined;
 }
 
+/** One look at a poll: the value of the first vote, or undefined if nobody has voted yet. */
+export async function readVote(rec: PollRecord): Promise<string | undefined> {
+  const poll = await im.polls.get(rec.guid);
+  for (const vote of poll.votes) {
+    const value = rec.optionIds[vote.optionIdentifier];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 export const realPolls: PollApi = { send, wait };
