@@ -1,0 +1,388 @@
+restaurant_id,dish_name,calories,protein_g,carbs_g,fat_g,sodium_mg,allergens,diet_tags,match_category,category,description,price_usd,allergen_source,basis
+mr-fries-man,Chili Cheese Fries,1100,28,118,57,1415,milk,,,,,,,Meal-box size: ~250 g fries + 150 g beef chili + 40 g cheddar
+mr-fries-man,3 Piece tenders w/Fries,1180,32,106,70,1725,milk|egg|wheat,,,,,,,3 breaded tenders (~135 g) + ~200 g fries + ranch cup
+mr-fries-man,Buffalo Ranch Chicken,1340,36,123,78.5,2120,milk|egg|wheat,,$12 Meal Box,,,,,Meal-box size: ~250 g fries + 110 g fried chicken + cheddar + buffalo ranch
+mr-fries-man,Buffalo Ranch Chicken,1840,49,171,107,2885,milk|egg|wheat,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 150 g fried chicken + 40 g cheddar + buffalo ranch sauce (grilled chicken would be lower)
+mr-fries-man,Honey Garlic Shrimp & Steak,1680,64.5,180,77.5,2090,milk|shellfish,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 85 g shrimp + 85 g steak + 40 g cheddar + honey garlic sauce
+mr-fries-man,Chicken Bacon Parmesan,1900,56,171.5,109.5,2935,milk|wheat,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 150 g fried chicken + bacon + parmesan + lemon garlic butter sauce
+mr-fries-man,BBQ Bacon Ranch Chicken,1960,57.5,182.5,111.5,3095,milk|egg|wheat,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 150 g fried chicken + bacon + 40 g cheddar + BBQ ranch sauce
+mr-fries-man,Nashville Chicken Fries,1690,39,167,96,2185,wheat,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 150 g Nashville-style fried chicken with hot oil; toppings not described on the menu
+mr-fries-man,Fry Box,,,,,,milk|egg|shellfish|wheat,,,,,,,"Four plates in one box; multi-serving, not estimated"
+mr-fries-man,Lemon Garlic Crab & Shrimp,1560,52.5,147,84.5,1890,milk|shellfish,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 85 g shrimp + 60 g blue crab + 40 g cheddar + lemon garlic butter sauce
+mr-fries-man,Chili Cheese,1470,39.5,160.5,74.5,1860,milk,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 200 g chicken chili + 50 g cheddar
+mr-fries-man,Hello Shrimp and Chicken,,,,,,shellfish,,,,,,,Menu gives no description of sauce or toppings; not estimated
+mr-fries-man,Mini Chhurros Fries,520,6,58,29,360,wheat,,,,,,,~120 g mini churros with cinnamon sugar (portion size not stated)
+mr-fries-man,Philly Cheesesteak Fries,1610,56,151.5,86.5,1905,milk,,,,,,,Loaded fries: ~350 g fries (USDA fast-food fries) + 120 g sliced beef + provolone + nacho cheese + onions and peppers
+mr-fries-man,Build Your Own,,,,,,,,,,,,,Customer-built; not estimated
+mr-fries-man,Sauces - To Go,,,,,,,,,,,,,Sauce choice not specified; not estimated
+mr-fries-man,"Coca-Cola, Can",140,0,39,0,45,,,,,,,,Coca-Cola 12 fl oz can label
+mr-fries-man,"Sprite, Can",140,0,38,0,65,,,,,,,,Sprite 12 fl oz can label
+mr-fries-man,Bottled Water,0,0,0,0,0,,,,,,,,Water
+mr-fries-man,POWERADE,,,,,,,,,,,,,Bottle size and flavour not stated; not estimated
+mr-fries-man,Pink lemonade,,,,,,,,,,,,,Serving size not stated; not estimated
+mr-fries-man,Kool Aid,,,,,,,,,,,,,Serving size not stated; not estimated
+mr-fries-man,Snapple,,,,,,,,,,,,,Flavour not stated (labels range roughly 150-200 kcal per 16 fl oz); not estimated
+mr-fries-man,Grape Kool-Aid,,,,,,,,,,,,,Serving size not stated; not estimated
+mr-fries-man,5 wings,500,40,5,35,950,,,,,,,,5 fried wing pieces at ~100 kcal each (USDA fried wing with skin); sauce not included
+mr-fries-man,15 wings,1480,120,15,105,2850,,,,,,,,Whole order: 15 fried wing pieces at ~100 kcal each; sauce not included
+mr-fries-man,50 wings,,,,,,,,,,,,,Party size; roughly 100 kcal per wing piece
+mr-fries-man,3pc Tenders w/ Fries,1160,32.5,124,59,1470,wheat,,,,,,,3 breaded tenders (~135 g) + ~250 g fries
+mr-fries-man,5pc Tenders w/ Fries,1400,49,138,73,2100,wheat,,,,,,,5 breaded tenders (~225 g) + ~250 g fries
+mr-fries-man,Banana Pudding,370,6,56,14,280,milk|egg|wheat,,,,,,,~200 g cup of banana pudding with vanilla wafers
+mr-fries-man,Blue Velvet Cake Slice,580,6,78,27,450,milk|egg|wheat,,,,,,,~150 g slice of layer cake with cream cheese frosting
+mr-fries-man,Red Velvet Cake Slice,580,6,78,27,450,milk|egg|wheat,,,,,,,~150 g slice of layer cake with cream cheese frosting
+mr-fries-man,Cheesecake Slice,460,7.5,36,31.5,610,milk|egg|wheat,,,,,,,~140 g slice (USDA commercially prepared cheesecake)
+mr-fries-man,Cookies,,,,,,milk|egg|wheat,,,,,,,Number of cookies per order not stated; not estimated
+mr-fries-man,Cupcakes,,,,,,milk|egg|wheat,,,,,,,Number of cupcakes per order not stated; not estimated
+moes,Burrito,765,38,97,25,1879,milk|wheat|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, adobo chicken, seasoned rice, black beans, cheese, lettuce, pico. Build-your-own, so actual varies"
+moes,Homewrecker,905,40,103,37,2214,milk|wheat|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, adobo chicken, seasoned rice, black beans, cheese, lettuce, pico, guac, sour cream"
+moes,Bowl,665,34,74,25,1913,milk|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: adobo chicken, seasoned rice, black beans, cheese, lettuce, pico, sour cream"
+moes,Homewrecker Bowl,745,35,79,32,2233,milk|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: adobo chicken, seasoned rice, black beans, cheese, lettuce, pico, sour cream, guac"
+moes,Moe Protein Bowl,850,60,80,31,2518,milk|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: double white meat chicken, seasoned rice, black beans, queso, pico, Oaxaca cheese"
+moes,Moe Protein Burrito,1010,65,104,36,2499,milk|wheat|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, double white meat chicken, seasoned rice, black beans, queso, pico, Oaxaca cheese"
+moes,Stack,820,42,78,38,2080,milk|wheat,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, 2 crispy corn shells, queso, adobo chicken, black beans, cheese, pico"
+moes,Quesadilla,600,35,66,22,1350,milk|wheat,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, adobo chicken, black beans, one cheese portion (a quesadilla may carry more cheese)"
+moes,Chicken Club Quesadilla,875,50,60,50,2150,milk|egg|wheat|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: 12in tortilla, adobo chicken, cheese, bacon, pico, chipotle ranch, lettuce"
+moes,Southwest Salad,425,14,32,25.5,1310,milk|soy,,,,,,,"Sum of Moe's official ingredient chart (2026) for a standard build: black beans, roasted corn salsa, pico, Oaxaca cheese, romaine, southwest vinaigrette; no protein added"
+moes,Southwest Salad,,,,,,milk|soy,,Groups & Parties,,,,,Catering size; not estimated
+moes,Jr. Burrito,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; junior portion sizes are not all on the nutrition chart, so not estimated"
+moes,Three Tacos,,,,,,milk|wheat,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; taco topping portions are not on the nutrition chart, so not estimated"
+moes,One Taco,,,,,,milk|wheat,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; taco topping portions are not on the nutrition chart, so not estimated"
+moes,Salad,,,,,,milk,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; build-your-own, not estimated"
+moes,Nachos,,,,,,milk,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; chip portion for nachos is not on the nutrition chart, so not estimated"
+moes,Grilled Burrito Dippers (2 ct.),,,,,,milk|wheat,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; recipe portions not published, so not estimated"
+moes,Grilled Burrito Dipper (1 ct.),,,,,,milk|wheat,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; recipe portions not published, so not estimated"
+moes,Grilled Burrito Dippers 10 Pack,,,,,,milk|wheat,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; party size, not estimated"
+moes,Jr. Burrito Moe Value Meal,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; combo with drink choice, not estimated"
+moes,Taco Moe Value Meal,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; combo with drink choice, not estimated"
+moes,Dippers Moe Value Meal,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; combo with drink choice, not estimated"
+moes,Chips & Dips Trio,,,,,,milk,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; shareable, not estimated"
+moes,Meal Kit XL,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Taco Kit,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Fajita Kit,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Nacho Kit,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Taco Value Pack,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Burrito Value Pack,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Burrito & Taco Value Pack,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Variety Value Pack,,,,,,milk|wheat|soy,,,,,,,"Allergens from Moe's official allergen chart for the standard ingredients; feeds a group, not estimated"
+moes,Gallon Beverage,,,,,,,,,,,,,"Gallon of tea or lemonade; multi-serving, not estimated"
+moes,Kids Burrito,,,,,,milk|egg|wheat|soy,,,,,,,Allergens from Moe's official allergen chart for the standard ingredients; includes cookie; kids portions not all on the nutrition chart
+moes,Kids Quesadilla,,,,,,milk|egg|wheat|soy,,,,,,,Allergens from Moe's official allergen chart for the standard ingredients; includes cookie; kids portions not all on the nutrition chart
+moes,Kids Taco,,,,,,milk|egg|wheat|soy,,,,,,,Allergens from Moe's official allergen chart for the standard ingredients; includes cookie; kids portions not all on the nutrition chart
+moes,Regular Fountain Drink,190,0,52,0,55,,,,,,,,"Moe's official chart: Coca-Cola, Regular (drink choice assumed)"
+moes,Large Fountain Drink,360,0,97,0,100,,,,,,,,"Moe's official chart: Coca-Cola, Large (drink choice assumed)"
+moes,Kids Drink,140,0,39,0,40,,,,,,,,"Moe's official chart: Coca-Cola, Kids (drink choice assumed)"
+moes,Bottled Coke 20 oz,240,0,65,0,75,,,,,,,,Coca-Cola 20 fl oz bottle label
+moes,Bottled Sprite 20 oz,240,0,64,0,110,,,,,,,,Sprite 20 fl oz bottle label
+moes,Bottled Diet Coke 20 oz,0,0,0,0,70,,,,,,,,Diet Coke 20 fl oz bottle label
+moes,Bottled Coke Zero 20 oz,0,0,0,0,70,,,,,,,,Coke Zero Sugar 20 fl oz bottle label
+moes,Bottled Water,0,0,0,0,0,,,,,,,,Water
+moes,Sweet Street Chocolate Chunk Cookie,,,,,,milk|egg|wheat|soy,,,,,,,"Allergens from Moe's chart (chocolate chip cookie); the chart's 170 kcal cookie is the kids-meal size, so not used"
+stir-house,Build Your Own Box,,,,,,soy,,,,,,,Customer-built; not estimated
+stir-house,General Tso,870,30,126,27.5,1550,wheat|soy,,,,,,,"~120 g breaded plant-based chicken, vegetables, General Tso sauce, wok oil, ~250 g white rice"
+stir-house,Lucky Buddha,840,21,118,32,1250,soy,,,,,,,"~300 g cooked quinoa stir-fried with vegetables, pineapple sauce, ~90 g fried oyster mushrooms"
+stir-house,A-Town,1100,44.5,130,45,1500,soy,,,,,,,"~300 g jasmine rice, plant-based grounds, red beans, corn, aioli sauce, one fried plant-based drumstick"
+stir-house,Khan (Spicy),770,41,111,18,2000,wheat|soy,,,,,,,"~300 g cooked rice noodles, plant-based grounds, vegetables, Mongolian (soy) sauce, plant-based chicken"
+stir-house,Nola (Spicy),890,33,130,26.5,1500,soy,,,,,,,"~300 g jasmine rice, plant-based chorizo, red beans, spinach, jambalaya sauce, fried konjac shrimp"
+stir-house,Thai Pineapple Fried Rice (Served in a Pineapple),740,24.5,123,17,1500,wheat|soy,,,,,,,"~300 g jasmine rice, plant-based chicken, pineapple, vegetables, sweet soy sauce"
+stir-house,Bao Buns (2),320,17,48,6.5,650,wheat|soy,,,,,,,2 steamed buns (~40 g each) with ~60 g seasoned plant-based filling
+stir-house,Cucumber Salad,160,2,20,8,450,soy,,,,,,,"~250 g cucumber, pear and onion in a garlic-ginger dressing"
+stir-house,Fresh Spring Roll,200,5.5,30,6.5,400,soy,,,,,,,1 rice-paper roll (~120 g) with ~30 g soy-based dipping sauce
+stir-house,Fried Drumsticks (3),610,36,36,36,1200,soy,,,,,,,3 plant-based drumsticks (~90 g each) fried in chickpea-flour batter
+stir-house,Fried Oyster Mushrooms (6 oz.),480,16.5,39,29,600,,,,,,,,"170 g oyster mushrooms in chickpea-flour batter, deep fried"
+stir-house,Fried Shrimp (7),380,10,40,20.5,550,,,,,,,,"7 konjac-based shrimp (~110 g) in chickpea-flour batter, deep fried"
+stir-house,Jalapeno Hush Puppies (4),290,6,36,14,600,wheat,,,,,,,4 hush puppies (~25 g each)
+stir-house,Smoky Chorizo and Black Bean Mini Empanadas (2),320,9,34,16,460,wheat,,,,,,,2 fried mini empanadas (~55 g each)
+stir-house,Lemongrass Coconut Soup,290,3.5,14,24.5,1050,,,,,,,,~350 g coconut-milk soup
+stir-house,Buddha Pineapple Sauce (Sweet),80,0,20,0,150,,,,,,,,~2 oz sweet pineapple sauce
+stir-house,General Tso Sauce (Sweet),95,0.5,22,0.5,600,wheat|soy,,,,,,,~2 oz sweet chili-soy glaze
+stir-house,Jambalaya Sauce (Spicy),35,1,5,1,300,,,,,,,,~2 oz roasted tomato sauce
+stir-house,Mongolian Sauce,80,2,18,0,1100,wheat|soy,,,,,,,~2 oz soy sauce and brown sugar glaze
+stir-house,Red Pepper Aioli Sauce,220,1,5,22,300,soy,,,,,,,~2 oz soy-milk based aioli
+stir-house,Bottled Water,0,0,0,0,0,,,,,,,,Water
+stir-house,Bubly Sparkling Water,0,0,0,0,0,,,,,,,,Bubly 12 fl oz can label
+stir-house,Blueberry Lemonade,150,0,38,0,10,,,,,,,,12 fl oz house-made sweetened lemonade
+stir-house,Strawberry Lemonade,150,0,38,0,10,,,,,,,,12 fl oz house-made sweetened lemonade
+stir-house,Cucumber Pineapple Limeade,140,0,34,0,10,,,,,,,,12 fl oz house-made sweetened limeade
+stir-house,Coconut Water,60,0,15,0,90,,,,,,,,~11 fl oz unsweetened coconut water
+stir-house,Gold Peak Sweet Tea,190,0,48,0,25,,,,,,,,Gold Peak Sweet Tea 18.5 fl oz bottle label
+stir-house,Ting Grapefruit Soda,150,0,37,0,35,,,,,,,,Ting ~10 fl oz bottle
+stir-house,Asian Rice Noodles,260,4.5,60,0.5,50,,,,,,,,~250 g cooked rice noodles (USDA)
+stir-house,Jasmine Rice,320,7,70,1,5,,,,,,,,~250 g cooked white rice (USDA)
+stir-house,White Quinoa,300,11,53,5,15,,,,,,,,~250 g cooked quinoa (USDA)
+strikeout-wingz,1/2 Gallon Kool-Aid (Assorted Flavor),,,,,,,,,,,,,"Half gallon; multi-serving, not estimated"
+strikeout-wingz,Kool-Aid bottle,,,,,,,,,,,,,Bottle size not stated; not estimated
+strikeout-wingz,6pc Wingz plate,1240,53.5,69.5,83,1980,milk|egg,,,,,,,6 fried wing pieces at ~100 kcal each + ~150 g seasoned fries (side choice assumed) + ranch cup
+strikeout-wingz,10pc Wingz Plate,1640,85.5,73.5,111,2740,milk|egg,,,,,,,10 fried wing pieces at ~100 kcal each + ~150 g seasoned fries (side choice assumed) + ranch cup
+strikeout-wingz,12pc Wingz Plate,1830,101.5,75.5,125,3120,milk|egg,,,,,,,12 fried wing pieces at ~100 kcal each + ~150 g seasoned fries (side choice assumed) + ranch cup
+strikeout-wingz,15pc Wingz Plate,2130,125.5,78.5,146,3690,milk|egg,,,,,,,15 fried wing pieces at ~100 kcal each + ~150 g seasoned fries (side choice assumed) + ranch cup
+strikeout-wingz,Cajun Ranch Fries,1230,17.5,126,73,1455,milk|egg,,,,,,,~300 g seasoned fries + shredded cheese + ranch drizzle
+strikeout-wingz,Buffalo Fries,1190,17.5,125.5,69,1865,milk|egg,,,,,,,~300 g seasoned fries + shredded cheese + buffalo sauce + ranch
+strikeout-wingz,Fried Pickles,600,5.5,44.5,45,2090,milk|egg|wheat,,,,,,,~170 g battered fried pickle slices + cajun ranch cup
+strikeout-wingz,Cheese Sticks,500,16,32,34,1010,milk|egg|wheat,,,,,,,4 mozzarella sticks + ~40 g creamy dipping sauce
+strikeout-wingz,Whitwingz,1360,72.5,93,77.5,2180,fish|wheat,,,,,,,6 fried wings + 1 breaded fried whiting fillet (~100 g) + ~150 g fries + slice of bread
+strikeout-wingz,Catwingz,1360,73.5,89,78.5,2130,fish|wheat,,,,,,,"6 fried wings + 1 breaded fried catfish fillet (~100 g, USDA) + ~150 g fries + slice of bread"
+strikeout-wingz,Whiting Plate,990,41.5,99,48,1490,fish|wheat,,,,,,,2 breaded fried whiting fillets (~200 g) + ~150 g fries + slice of bread
+strikeout-wingz,Catfish Plate,990,43.5,91,50,1390,fish|wheat,,,,,,,"2 breaded fried catfish fillets (~200 g, USDA) + ~150 g fries + slice of bread"
+strikeout-wingz,(3) Chicken Tenders,840,29,83,44,1395,wheat,,,,,,,3 breaded tenders (~135 g) + ~150 g fries (plate side assumed)
+strikeout-wingz,(5) Chicken Tenders,1090,45,97,58,2025,wheat,,,,,,,5 breaded tenders (~225 g) + ~150 g fries (plate side assumed)
+strikeout-wingz,Buffalo Chicken Friez,1530,39,144.5,88.5,2805,milk|egg|wheat,,,,,,,~300 g seasoned fries + 120 g fried chicken + cheese + buffalo sauce + ranch
+strikeout-wingz,Chicken Cajun Ranch Fries,1570,39.5,145,92,2295,milk|egg|wheat,,,,,,,~300 g seasoned fries + 120 g fried chicken + cheese + cajun ranch
+strikeout-wingz,Angus Chz Burger,1050,42.5,94,55.5,1585,milk|wheat,,,,,,,"1/3 lb beef patty, bun, cheese slice, condiments + ~150 g fries (plate side assumed)"
+strikeout-wingz,Chicken Sand Plate,1050,32,109,54.5,1700,egg|wheat,,,,,,,Fried chicken fillet sandwich with mayo + ~150 g fries (plate side assumed)
+strikeout-wingz,Season Friez,460,5,61,22,450,,,,,,,,~150 g seasoned fries (USDA fast-food fries)
+strikeout-wingz,Season Fries,460,5,61,22,450,,,,,,,,~150 g seasoned fries (USDA fast-food fries)
+strikeout-wingz,Side Salad,30,1.5,5,0.5,15,,,,,,,,"~100 g lettuce, tomato and cucumber; no dressing or cheese"
+strikeout-wingz,Fried Okra,370,4.5,37.5,22.5,675,wheat,,,,,,,~150 g breaded fried okra
+strikeout-wingz,Chicken Salad,490,31,26,29.5,1060,milk|wheat,,,,,,,Greens + ~120 g fried chicken + shredded cheese; dressing not included
+strikeout-wingz,Fish Salad,390,26,19,23,670,milk|fish|wheat,,,,,,,Greens + ~100 g breaded fried fish + shredded cheese; dressing not included
+strikeout-wingz,(2) Chx Tenders,570,19.5,55.5,29.5,930,wheat,,,,,,,Kids meal: 2 breaded tenders (~90 g) + ~100 g fries (side assumed); drink not included
+strikeout-wingz,(4) Boneless Wingz,630,23.5,59,33,1085,wheat,,,,,,,Kids meal: 4 breaded boneless wings (~110 g) + ~100 g fries (side assumed); drink not included
+strikeout-wingz,Grilled Cheese,680,15.5,71,37,1300,milk|wheat,,,,,,,"Kids meal: 2 slices bread, 2 slices American cheese, butter + ~100 g fries (side assumed)"
+strikeout-wingz,Fried Oreo,,,,,,wheat|soy,,,,,,,Number of pieces per order not stated; a battered fried Oreo is roughly 110-150 kcal each
+strikeout-wingz,Fried Lemon Oreo,,,,,,wheat|soy,,,,,,,Number of pieces per order not stated; a battered fried Oreo is roughly 110-150 kcal each
+strikeout-wingz,Fried Twinkie (regular),350,3,40,20,320,milk|egg|wheat|soy,,,,,,,1 Twinkie (label: 130 kcal) + batter + frying oil; published figures for a fried Twinkie range ~300-420 kcal
+strikeout-wingz,Rum cake,,,,,,milk|egg|wheat,,,,,,,Cake size not stated; not estimated
+strikeout-wingz,(20) Wingz,,,,,,,,,,,,,Family pack; roughly 100 kcal per fried wing piece before sauce
+strikeout-wingz,(30) Wingz,,,,,,,,,,,,,Family pack; roughly 100 kcal per fried wing piece before sauce
+strikeout-wingz,(50) Wingz,,,,,,,,,,,,,Family pack; roughly 100 kcal per fried wing piece before sauce
+strikeout-wingz,(75) Wingz,,,,,,,,,,,,,Family pack; roughly 100 kcal per fried wing piece before sauce
+strikeout-wingz,(100) Wingz,,,,,,,,,,,,,Family pack; roughly 100 kcal per fried wing piece before sauce
+strikeout-wingz,Lettuce,5,0,1,0,0,,,,,,,,Burger-topping portion
+strikeout-wingz,Tomato,5,0,1.5,0,0,,,,,,,,2 slices
+strikeout-wingz,Pickle,5,0,0.5,0,280,,,,,,,,Dill pickle slices (~30 g)
+strikeout-wingz,Onion,10,0,2,0,0,,,,,,,,Sliced raw onion (~20 g)
+strikeout-wingz,Sauce on side,,,,,,,,,,,,,Sauce choice not specified; not estimated
+strikeout-wingz,Condiments,,,,,,,,,,,,,Not specified; not estimated
+strikeout-wingz,Nashville Hot Hen,,,,,,wheat,,,,,,,Portion not described on the menu; not estimated
+strikeout-wingz,Sweet&Sassy Bottle,,,,,,,,,,,,,Bottle of sauce; not a single serving
+strikeout-wingz,Lemon&Pepper Bottle,,,,,,,,,,,,,Bottle of sauce; not a single serving
+strikeout-wingz,BurgerWingz,1640,90.5,100,97.5,2725,milk|wheat,,,,,,,6 fried wings + cheeseburger + ~150 g fries; drink not included
+strikeout-wingz,Chicken biscuit,500,20,47.5,25.5,1245,milk|wheat,,,,,,,Biscuit (~75 g) + fried chicken fillet (~85 g); in line with chain chicken biscuits (~460-500 kcal)
+strikeout-wingz,Sausage biscuit,430,13,34.5,27,1020,milk|wheat,,,,,,,Biscuit (~75 g) + pork sausage patty; in line with chain sausage biscuits (~430-460 kcal)
+strikeout-wingz,Egg&cheese biscuit,420,14.5,35.5,25,1130,milk|egg|wheat,,,,,,,Biscuit (~75 g) + egg + cheese slice
+strikeout-wingz,Cheese grits,320,10.5,32.5,17,750,milk,,,,,,,~1 cup grits with cheese and butter
+strikeout-wingz,Pancakes(2),350,10,44,15,676,milk|egg|wheat,,,,,,,Two 6-inch pancakes (USDA); no syrup or butter
+strikeout-wingz,Eggs(2),180,12.5,1,14,340,egg,,,,,,,2 large eggs cooked with fat
+strikeout-wingz,Biscuits&gravy,490,12,46,29,1330,milk|wheat,,,,,,,1 biscuit + ~170 g sausage gravy
+strikeout-wingz,Hashbrown patty,140,1.5,16,8,310,,,,,,,,1 fried hash brown patty (~55 g)
+strikeout-wingz,Coffee,0,0,0,0,5,,,,,,,,Black coffee
+strikeout-wingz,Orange Juice,170,2.5,39,0.5,5,,,,,,,,~12 fl oz orange juice (USDA)
+strikeout-wingz,Extras,,,,,,,,,,,,,Not specified; not estimated
+strikeout-wingz,Plain Biscuit,260,5,34,12,600,milk|wheat,,,,,,,"1 biscuit (~75 g, USDA)"
+india-eats,Vegetable Samosas,520,9,58,28,700,wheat,,,,,,,2 fried samosas (~100 g each); piece count assumed
+india-eats,Chicken 65,500,40,18,30,1200,milk|wheat,,,,,,,~200 g battered fried chicken pieces
+india-eats,Onion Bhaji,410,9,37.5,25,675,,,,,,,,~150 g chickpea-flour onion fritters
+india-eats,Samosa Chaat,760,17,93,35,1360,milk|wheat,,,,,,,2 samosas + ~120 g chickpea curry + yogurt + chutneys
+india-eats,Chana Bhaji,320,14,40,11,925,,,,,,,,~250 g spiced chickpeas
+india-eats,Tandoori Hot Wings,680,64,8,44,1600,milk,,,,,,,8 baked wing pieces with tandoori sauce; piece count assumed
+india-eats,Aloo Poori,720,13,96,31,960,wheat,,,,,,,2 potato-stuffed fried breads (~120 g each); piece count assumed
+india-eats,Chicken Samosas,480,16,48,25,760,wheat,,,,,,,2 fried chicken samosas; piece count assumed
+india-eats,Aloo Tikki Chaat,540,13,75,21,1140,milk,,,,,,,2 fried potato patties + ~120 g chickpea curry + yogurt + chutneys
+india-eats,Gobi 65,420,9,40,25,1100,wheat,,,,,,,~220 g battered fried cauliflower
+india-eats,Dal Poori,710,17,92,30,960,wheat,,,,,,,2 lentil-stuffed fried breads (~120 g each); piece count assumed
+india-eats,Aloo Tikki,520,7.5,74,21,950,,,,,,,,3 fried potato patties with chutneys; piece count assumed
+india-eats,Curry Hot Wings,790,64,8,56,1600,,,,,,,,8 fried wing pieces with curry sauce; piece count assumed
+india-eats,Papdi Chaat,550,13.5,79,19.5,840,milk|wheat,,,,,,,~60 g fried flour crisps + chickpeas/potato + yogurt + chutneys
+india-eats,Shrimp Spring rolls (4),370,12,40,18,800,shellfish|wheat,,,,,,,4 fried spring rolls (~40 g each)
+india-eats,Vegetables Spring Rolls(3),330,6,39,16.5,660,wheat,,,,,,,3 fried spring rolls (~50 g each)
+india-eats,Ragda Patty,510,13,74,18,1150,,,,,,,,2 fried potato patties + ~150 g white-pea curry + onion and chutney
+india-eats,Butterfly  Fried Shrimp (6),350,21,27,18,840,shellfish|wheat,,,,,,,6 breaded fried shrimp
+india-eats,Tikki Wings,670,64,4,44,1500,milk,,,,,,,8 oven-baked wing pieces (count assumed) with tandoori spices
+india-eats,Lemon Peppers On The Border,900,64,8,68,1700,milk,,,,,,,8 fried wing pieces (count assumed) + lemon pepper butter sauce
+india-eats,Teriyaki Samurai Muromachi Wings,830,65.5,17,56,2670,wheat|soy,,,,,,,8 fried wing pieces (count assumed) + teriyaki sauce
+india-eats,Nuclear Blast,830,64,9,60,2520,milk,,,,,,,8 fried wing pieces (count assumed) + buffalo sauce
+india-eats,Mango Habanero Wings,860,64,26,56,1920,,,,,,,,8 fried wing pieces (count assumed) + mango habanero sauce
+india-eats,Golden Hot Honey Wings,910,64,28,60,2020,,,,,,,,8 fried wing pieces (count assumed) + hot honey sauce
+india-eats,Dynamite Blast,830,64,9,60,2520,milk,,,,,,,8 fried wing pieces (count assumed) + buffalo sauce
+india-eats,Mulligatawny Soup,210,10.5,28,6.5,1120,,,,,,,,~350 g lentil soup
+india-eats,Coconut Soup,320,3.5,14,28,1050,,,,,,,,~350 g coconut-milk soup
+india-eats,Chicken Dal Soup,250,21,26,7,1120,,,,,,,,~350 g lentil and chicken soup
+india-eats,Garlic Naan,390,11.5,61,11,620,milk|wheat,,,,,,,"1 naan (~120 g, USDA) with butter and garlic"
+india-eats,Naan,380,11.5,60,10,600,milk|wheat,,,,,,,"1 naan (~120 g, USDA) with butter"
+india-eats,Cheese Naan,530,21,61,22,850,milk|wheat,,,,,,,1 naan stuffed with ~40 g cheese
+india-eats,Bullet Naan,380,11.5,61,10,600,milk|wheat,,,,,,,1 naan (~120 g) with green chili
+india-eats,Coconut Cheese Naan,580,19.5,64,27,800,milk|wheat,,,,,,,1 naan with ~30 g cheese and coconut
+india-eats,Paratha,320,6.5,45,13,450,milk|wheat,,,,,,,"1 paratha (~100 g, USDA)"
+india-eats,Chapati,200,7.5,31,5,280,wheat,,,,,,,"1 chapati (~68 g, USDA)"
+india-eats,CHICKEN COMBO,1230,53,159,42.5,2170,milk|tree_nuts|wheat,,,,,,,Thali: half portions of chicken curry and chicken tikka masala + naan + ~200 g rice + one sweet
+india-eats,Chicken and Lamb combo,1280,53,159,48.5,2170,milk|tree_nuts|wheat,,,,,,,Thali: half portions of chicken tikka masala and lamb curry + naan + ~200 g rice + one sweet
+india-eats,Vegetables Combo,1240,38,179,41.5,2190,milk|wheat,,,,,,,Thali: half portions of saag paneer and chana masala + naan + ~200 g rice + one sweet
+india-eats,MIXED SALADS,80,2.5,17,0.5,20,,,,,,,,"~250 g onion, tomato and cucumber; no dressing"
+india-eats,Onion Salad,60,1.5,14,0,10,,,,,,,,~150 g sliced onion with lemon and chili
+india-eats,Plain Rice,380,6.5,85,1,350,,,,,,,,~300 g cooked basmati rice (USDA)
+india-eats,Brown Rice,330,7,70,2.5,300,,,,,,,,~300 g cooked brown rice (USDA)
+india-eats,Peas Fried Rice,580,12,98,16,1400,wheat|soy,,,,,,,~350 g vegetable fried rice
+india-eats,BAKLAVA PASTRY,350,5.5,30,23,260,milk|tree_nuts|wheat,,,,,,,~80 g baklava (USDA)
+india-eats,Mango Cheese Cake,390,6.5,34,25,400,milk|egg|wheat,,,,,,,~120 g slice
+india-eats,Cheese Cake,390,6.5,30.5,27,525,milk|egg|wheat,,,,,,,~120 g slice (USDA commercially prepared cheesecake)
+india-eats,Rice Pudding,230,6.5,36,7,90,milk,,,,,,,~180 g kheer
+india-eats,Gulab Jamun,310,4,50,10,60,milk|wheat,,,,,,,2 pieces in syrup; piece count assumed
+india-eats,Rasmalai,250,8,28,12,80,milk,,,,,,,2 pieces in sweetened milk; piece count assumed
+india-eats,Paneer Tikka Masala Curry - SERVED WITH RICE,900,30.5,92,45,1590,milk|tree_nuts,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Tarka Daal - SERVED WITH RICE,660,24,112,13,1490,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Mixed Vege Curry - SERVED WITH RICE,610,13.5,102,16,1490,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Chana Masala Curry - SERVED WITH RICE,730,24,122,16,1560,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Saag Paneer Curry - SERVED WITH RICE,790,27,88,37,1660,milk,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Tofu Malai Curry - SERVED WITH RICE,700,25,82,30,1200,soy,,,,,,,~150 g tofu in ~200 g coconut curry sauce + ~240 g basmati rice
+india-eats,Tofu Tikka Masala - SERVED WITH RICE,680,26,85,26,1240,milk|tree_nuts|soy,,,,,,,~150 g tofu in ~200 g creamy tomato sauce + ~240 g basmati rice
+india-eats,Tofu Vindaloo - SERVED WITH RICE,620,25,90,18,1200,soy,,,,,,,~150 g tofu in ~200 g vindaloo sauce with potato + ~240 g basmati rice
+india-eats,Tofu Saagwala Curry - SERVED WITH RICE,640,28,82,22,1200,soy,,,,,,,~150 g tofu in ~200 g curry sauce + ~240 g basmati rice
+india-eats,Tofu & Chickpeas Masala - SERVED WITH RICE,720,29.5,108.5,18.5,1290,soy,,,,,,,~100 g tofu + ~240 g chickpea masala + ~240 g basmati rice
+india-eats,Tikka Masala Curry - SERVED WITH RICE,790,39,87,32,1590,milk|tree_nuts,,,,,,,~340 g curry (chicken assumed) + ~240 g basmati rice
+india-eats,CHICKEN TIKKA MASALLA - SERVED WITH RICE,790,39,87,32,1590,milk|tree_nuts,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Butter Chicken Curry - SERVED WITH RICE,830,39,85,37,1560,milk,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Goat Achar Curry - SERVED WITH RICE,780,46,82,30,1700,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,Lamb Achari Curry -- SERVED WITH RICE,820,42,83,35,1700,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,MIXED MEAT CURRY,560,46,18,34,1500,,,,,,,,"~400 g chicken, lamb and goat curry; rice not included"
+india-eats,Malai Curry - SERVED WITH RICE,750,46,78,28,1250,,,,,,,,~150 g chicken (protein choice assumed) in ~200 g coconut curry sauce + ~240 g basmati rice
+india-eats,Bhuna Curry - SERVED WITH RICE,750,42,85,26.5,1590,,,,,,,,~340 g curry (chicken assumed) + ~240 g basmati rice
+india-eats,Vindaloo Curry - SERVED WITH RICE,700,37,90,21,1660,,,,,,,,~340 g curry with potato (chicken assumed) + ~240 g basmati rice
+india-eats,Curry - SERVED WITH RICE,710,42,83,23,1590,,,,,,,,~340 g curry (chicken assumed) + ~240 g basmati rice
+india-eats,Chicken Curry - SERVED WITH RICE,710,42,83,23,1590,,,,,,,,~340 g curry + ~240 g basmati rice
+india-eats,LAMB SAGG PANEER - SERVED WITH RICE,880,49,81,40,1300,milk,,,,,,,~120 g lamb + ~220 g saag paneer + ~240 g basmati rice
+india-eats,CHICKEN SAGG PANEER - SERVED WITH RICE,790,50,81,30,1300,milk,,,,,,,~120 g chicken + ~220 g saag paneer + ~240 g basmati rice
+india-eats,Tandoori Chicken - SERVED WITH RICE,740,57,73,24,1100,milk,,,,,,,~200 g cooked bone-in dark meat in yogurt marinade + ~240 g basmati rice
+india-eats,Chicken Kabab - SERVED WITH RICE,690,67,72,15,1100,milk,,,,,,,~200 g grilled chicken breast in yogurt marinade + ~240 g basmati rice
+india-eats,Lamb Kebab - SERVED WITH RICE,740,52,72,27,1100,milk,,,,,,,~180 g grilled lamb in yogurt marinade + ~240 g basmati rice
+india-eats,Paneer Tandoori - SERVED WITH RICE,960,43,80,52,1000,milk,,,,,,,~200 g grilled paneer in yogurt marinade + ~240 g basmati rice
+india-eats,Tofu Tandoori - SERVED WITH RICE,650,34,79,22,1000,milk|soy,,,,,,,~250 g grilled tofu in yogurt marinade + ~240 g basmati rice
+india-eats,Lamb Biryani,760,34,90,29,1575,milk,,,,,,,~450 g biryani (rice cooked with lamb)
+india-eats,Goat Biryani,740,36,90,26,1575,milk,,,,,,,~450 g biryani (rice cooked with goat)
+india-eats,Vegetables Biryani,610,13,99,18,1500,milk,,,,,,,~450 g biryani (rice cooked with vegetables)
+india-eats,Chicken Biryani,710,36,90,22.5,1575,milk,,,,,,,~450 g biryani (rice cooked with chicken)
+india-eats,Chicken 65 Biryani,780,36,95,28,1600,milk|wheat,,,,,,,~450 g biryani (rice cooked with fried chicken 65)
+india-eats,Chicken Tikka Biryani,720,38,90,23,1600,milk,,,,,,,~450 g biryani (rice cooked with chicken tikka)
+india-eats,Mango Smoothie,310,6,62,4,90,milk,,,,,,,"~16 fl oz mango, dairy and sweetener"
+india-eats,Soda & Soft Drinks,,,,,,,,,,,,,Drink choice not specified; not estimated
+india-eats,Mango Lassi,280,8,48,6,110,milk,,,,,,,~12 fl oz yogurt and mango puree
+india-eats,Bottled Water,0,0,0,0,0,,,,,,,,Water
+india-eats,Mango Juice,200,0.5,50,0,20,,,,,,,,~12 fl oz sweetened mango nectar
+india-eats,Sweet Lassi,260,9,40,7,130,milk,,,,,,,~12 fl oz sweetened yogurt drink
+india-eats,Spiced Tea,,,,,,,,,,,,,Menu does not say whether it is served with milk and sugar; not estimated
+india-eats,Sparkling Water,0,0,0,0,0,,,,,,,,Unsweetened sparkling water
+india-eats,Yogurt-Cucumber Raita,90,5,8,4.5,250,milk,,,,,,,~150 g yogurt with cucumber
+india-eats,Spicy Mango Pickle,,,,,,,,,,,,,"Condiment; container size not stated, not estimated"
+india-eats,Sweet Mango Chutney,,,,,,,,,,,,,"Condiment; container size not stated, not estimated"
+india-eats,Onion Chutney,,,,,,,,,,,,,"Condiment; container size not stated, not estimated"
+mangos,Oxtails,1020,61.5,89,46,1725,,,,,,,,~200 g braised oxtail meat with gravy + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Curry chicken,870,55.5,91,32,1725,,,,,,,,~200 g bone-in curry chicken + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Jerk chicken,1110,62.5,116,43.5,1830,,,,,,,,~200 g jerk chicken with skin + ~250 g rice and peas + cabbage + 3 slices fried plantain
+mangos,Shrimp,760,47.5,89,24,1725,shellfish,,,,,,,~150 g sauteed shrimp in sauce + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Brown stew chicken,920,57.5,91,36,1825,,,,,,,,~200 g brown stew chicken with gravy + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Curry goat,1020,60.5,120,33.5,1730,,,,,,,,~180 g curry goat + ~250 g rice and peas + cabbage + 3 slices fried plantain
+mangos,Kingfish,810,55.5,86,27,1425,fish,,,,,,,~170 g fried kingfish steak + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Red snapper,850,63.5,86,28,1475,fish,,,,,,,~200 g fried red snapper + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Salmon,870,49,84,38,1325,fish,,,,,,,~170 g cooked salmon (USDA) + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Veggie plate,540,13,87,15,1025,,,,,,,,~200 g steamed cabbage + ~250 g rice and peas (side choice assumed)
+mangos,Deluxe veggie plate,670,16,105,21,1425,,,,,,,,~300 g sauteed vegetables in sauce + ~250 g rice and peas (side choice assumed)
+mangos,Tofu,780,34.5,94,30,1625,soy,,,,,,,~200 g tofu in sauce + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Tilapia,820,55.5,89,27,1375,fish,,,,,,,~170 g fried tilapia + ~250 g rice and peas + ~100 g steamed cabbage (side choice assumed)
+mangos,Chicken Package,,,,,,,,,,,,,Feeds 4-6; not estimated
+mangos,Oxtail package,,,,,,,,,,,,,Feeds 4-6; not estimated
+mangos,Rasta pasta (Vegetarian),,,,,,milk|wheat,,,,,,,Feeds 4-6; not estimated
+mangos,Curry shrimp pasta package,,,,,,milk|shellfish|wheat,,,,,,,Serves 4-6; not estimated
+mangos,Jerk shrimp pasta package,,,,,,milk|shellfish|wheat,,,,,,,Serves 4-6; not estimated
+mangos,Jerk chicken pasta,890,50,90,37,1600,milk|wheat,,,,,,,~450 g pasta in creamy sauce + ~120 g jerk chicken
+mangos,Jerk shrimp pasta,820,44,90,31,1650,milk|shellfish|wheat,,,,,,,~450 g pasta in creamy sauce + ~100 g shrimp
+mangos,Rasta pasta,740,22,92,31,1350,milk|wheat,,,,,,,~450 g pasta in creamy sauce with peppers
+mangos,Curry shrimp pasta,820,44,92,31,1650,milk|shellfish|wheat,,,,,,,~450 g pasta in creamy sauce + ~100 g shrimp
+mangos,Crispy tilapia sandwich,590,35,52,27,930,egg|fish|wheat,,,,,,,~120 g fried tilapia fillet on a roll with sauce
+mangos,Jerk chicken sandwich,490,41,43,17.5,1050,egg|wheat,,,,,,,~120 g jerk chicken breast on a roll with mayo
+mangos,Jerk shrimp salad,250,32,11,8.5,600,shellfish,,,,,,,Greens + ~120 g jerk shrimp; dressing not included
+mangos,Jerk chicken salad,310,43,12,10,700,,,,,,,,Greens + ~150 g jerk chicken; dressing not included
+mangos,Fried tilapia salad,380,38,21,15.5,600,fish|wheat,,,,,,,Greens + ~150 g fried tilapia; dressing not included
+mangos,Jamaican patty,360,10,36,19,650,wheat,,,,,,,1 beef patty (~140 g); in line with packaged Jamaican patties (~340-370 kcal)
+mangos,Baked macaroni and cheese,350,15,34,17,800,milk|egg|wheat,,,,,,,~200 g baked macaroni and cheese
+mangos,Coco bread,320,8,55,8,350,milk|wheat,,,,,,,1 coco bread (~110 g)
+mangos,Fried plantains,350,2,61,11,10,,,,,,,,~150 g fried ripe plantain (USDA)
+mangos,Rice and peas,420,10,75,9,625,,,,,,,,~250 g rice and peas cooked with coconut milk
+mangos,Roti skin,360,8.5,55,11.5,480,wheat,,,,,,,1 roti (~120 g)
+mangos,Steamed cabbage,110,3,12,6,400,,,,,,,,~200 g cabbage steamed with oil or butter
+mangos,White rice,380,8,84,1,300,,,,,,,,~300 g cooked white rice (USDA)
+mangos,Callaloo,120,5,10,7,500,,,,,,,,"~200 g greens cooked with onion, garlic and oil"
+mangos,Salad,40,2,7,0.5,20,,,,,,,,~150 g side salad; dressing not included
+mangos,Mango cheesecake,420,7,37,27,430,milk|egg|wheat,,,,,,,~130 g slice
+mangos,Carrot cake,530,6,56,31,300,milk|egg|wheat,,,,,,,~120 g slice with cream cheese frosting (USDA); may contain nuts
+mangos,Grace juices,,,,,,,,,,,,,Flavour and bottle size not stated; not estimated
+mangos,Mango punch,,,,,,,,,,,,,"Large container, size not stated; not estimated"
+mangos,Mango lemonade,,,,,,,,,,,,,Serving size not stated; not estimated
+mangos,D and g jamaican soda,180,0,45,0,35,,,,,,,,12 fl oz bottle; flavours range ~160-190 kcal
+mangos,Ginger beer,180,0,44,0,40,,,,,,,,12 fl oz bottle of Jamaican ginger beer (size assumed)
+mangos,Ting,150,0,37,0,35,,,,,,,,Ting ~10 fl oz bottle
+mangos,Water,0,0,0,0,0,,,,,,,,Water
+mangos,Coconut water,60,0,15,0,90,,,,,,,,~11 fl oz unsweetened coconut water
+mangos,Vita malt,210,1.5,52,0,35,,,,,,,,330 ml bottle of malt drink (barley malt)
+mangos,LUNCH SPECIAL,,,,,,,,,,,,,Choice of chicken meal; not estimated
+queen-tea,Earl Grey Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Jasmine Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Queen Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Signature Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Oolong Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Rose Jasmine Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Ginger Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Rose Oolong Milk Tea,230,1.5,40,7,80,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Thai Milk Tea,280,3,48,8,90,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Brown Sugar Milk Tea,300,3,55,7,90,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Honeydew Milk Tea,290,2,52,8,120,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Wintermelon Milk Tea,290,2,52,8,120,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Matcha Milk Tea,290,2,52,8,120,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Chocolate Milk Tea,290,2,52,8,120,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Creme Brulee Milk Tea,290,2,52,8,120,milk,,,Milk Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Grapefruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Passionfruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Seasons Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Mango Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Strawberry Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Pineapple Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Honeydew Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Wintermelon Lemon Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Dragonfruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Lychee Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Lemon Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Peach Fruit Tea,170,0,42,0,20,,,,Fruit Teas,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Pina Colada Slushy,260,1,55,4,40,,,,Fruit Teas,,,,queenteaboba.com menu. ~16 fl oz blended slush
+queen-tea,Coffee Milk Tea,290,2,52,8,120,milk,,,Coffee,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal)"
+queen-tea,Monin Caramel Coffee,210,6,34,6,100,milk,,,Coffee,,,,queenteaboba.com menu. ~16 fl oz milk coffee with caramel syrup
+queen-tea,Cafe Mocha,260,8,38,9,120,milk,,,Coffee,,,,queenteaboba.com menu. ~16 fl oz milk coffee with chocolate
+queen-tea,Oreo Slushy,340,4,55,12,200,milk|wheat|soy,,,Coffee,,,,queenteaboba.com menu. ~16 fl oz blended milk slush with Oreo
+queen-tea,Hot Chocolate,270,8,40,9,150,milk,,,Coffee,,,,queenteaboba.com menu. ~12-16 fl oz hot chocolate made with milk
+queen-tea,Yogurt Mango Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Lemon Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Strawberry Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Peach Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Pineapple Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Grapefruit Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Honeydew Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Lychee Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Yogurt Dragonfruit Tea,200,2,48,0.5,40,milk,,,Yogurt,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); cultured yogurt drink base"
+queen-tea,Coconut Milk Tea,290,2,52,8,120,milk,,,Decaf,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Taro Milk Tea,290,2,52,8,120,milk,,,Decaf,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Strawberry Milk Tea,290,2,52,8,120,milk,,,Decaf,,,,"queenteaboba.com menu. ~16 fl oz at default sweetness, no boba or other toppings (boba adds roughly 100-150 kcal); flavoured powder or syrup base"
+queen-tea,Dirty Tea,,,,,,milk,,,Decaf,,,,queenteaboba.com menu. Recipe not described; not estimated
+queen-tea,Strawberry Bubbly Water,110,0,28,0,20,,,,Decaf,,,,queenteaboba.com menu. ~16 fl oz sparkling water with fruit syrup
+queen-tea,Peach Bubbly Water,110,0,28,0,20,,,,Decaf,,,,queenteaboba.com menu. ~16 fl oz sparkling water with fruit syrup
+queen-tea,Dragon Bubbly Water,110,0,28,0,20,,,,Decaf,,,,queenteaboba.com menu. ~16 fl oz sparkling water with fruit syrup
+queen-tea,Fire Tofu,,,,,,soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Fried Pork Dumplings,,,,,,wheat|soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Sesame Balls,,,,,,sesame,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Vegetable Curry Samosas,,,,,,wheat,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Escar Rolls,,,,,,wheat,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Spring Rolls,,,,,,wheat,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Taiwanese Marinated Wings,,,,,,wheat|soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Fried Shumai,,,,,,wheat|soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Salt and Pepper Fried Tofu,,,,,,soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Salt & Pepper Chicken Nuggets,,,,,,wheat|soy,,,Taiwanese Street Food,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Steamed Pork Dumplings,,,,,,wheat|soy,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Pork Buns,,,,,,wheat|soy,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Steamed Glutinous Rice in Chicken,,,,,,wheat|soy,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Steamed Shrimp Dumplings,,,,,,shellfish|wheat,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Char Siu Buns,,,,,,wheat|soy,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Steamed Custard Buns,,,,,,milk|egg|wheat,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Steamed Shumai,,,,,,shellfish|wheat|soy,,,Dim Sum,,10.39,,queenteaboba.com menu. Piece count per order not published; not estimated
+queen-tea,Snow Ice,,,,,,milk,,,Share Snacks,,10.39,,queenteaboba.com menu. Shared dessert for 4-5 with choice of toppings; not estimated
+queen-tea,Bubble Egg Waffle,400,9,60,14,300,milk|egg|wheat,,,Share Snacks,,10.39,,queenteaboba.com menu. 1 egg waffle (~150 g)
+queen-tea,Braised Minced Pork Rice,700,20,90,29,900,wheat|soy,,,Rice Bowl,,14.99,,queenteaboba.com menu. ~300 g rice + ~100 g braised minced pork belly
+queen-tea,Pork Belly Rice,780,22,89,37,900,wheat|soy,,,Rice Bowl,,10.39,,queenteaboba.com menu. ~300 g rice + ~100 g braised pork belly
+queen-tea,Beef Rice,650,38,90,15,900,wheat|soy,,,Rice Bowl,,14.99,,queenteaboba.com menu. ~300 g rice + ~120 g braised beef
+queen-tea,Eel Rice,650,31,96,16,800,fish|wheat|soy,,,Rice Bowl,,14.99,,queenteaboba.com menu. ~300 g rice + ~100 g grilled eel with sauce

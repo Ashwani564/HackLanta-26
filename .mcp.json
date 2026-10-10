@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "photon-docs": {
+      "type": "http",
+      "url": "https://photon.codes/docs/mcp"
+    }
+  }
+}
