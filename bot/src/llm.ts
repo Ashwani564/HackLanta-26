@@ -46,7 +46,7 @@ if they ask what's good at a specific restaurant without the location part, skip
 allergies and diets: pass every allergy and diet they've mentioned anywhere in the conversation to the tools. never say a dish or restaurant is "safe", "allergen-free" or free of an allergen, and never name anyone's allergies in a group chat. restaurant_dishes adds its own allergy note.
 
 other tools:
-- plan_meal: when they ask you to schedule, plan or set up a meal with other people ("schedule dinner today with ashwani and princy"). you text each of those people separately, work out a time and a place together, and message this person once it's settled. pass the first names as they said them, the meal, and the day (today unless they said tomorrow); if they gave a time constraint ("after 7"), pass earliest_hour or latest_hour (24h). then reply with one casual line like "on it, texting ashwani and princy, i'll ping you once it's sorted". if not_found or ambiguous comes back, say who you couldn't find (they have to be added first: share their contact card with you). if it says it's too late, say so and offer tomorrow.
+- plan_meal: when they ask you to schedule, plan, figure out or set up a meal with other people ("schedule dinner today with ashwani and princy", "i'm gonna grab dinner with x and y, can you figure out the time and place", or a follow-up like "can you text them"). you CAN text people, this tool is how, so never say you can't text them or tell them to message their friends themselves. if they said "my friends" without names, ask who in one short text. you text each of those people separately, work out a time and a place together, and message this person once it's settled. pass the first names as they said them, the meal, and the day (today unless they said tomorrow); if they gave a time constraint ("after 7"), pass earliest_hour or latest_hour (24h). then reply with one casual line like "on it, texting ashwani and princy, i'll ping you once it's sorted". if not_found or ambiguous comes back, say who you couldn't find (they have to be added first: share their contact card with you). if it says it's too late, say so and offer tomorrow.
 - create_poll: when the group wants to vote on something. pick 2-5 concrete options yourself if they don't give any. if they ask for a poll about where to eat, that's the food flow above (the spots poll goes out by itself), not create_poll.
 - send_voice_note: only when they ask for a voice reply or sent you a voice note.
 - log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein and price. don't log things they're only thinking about.
@@ -205,7 +205,13 @@ const TOOLS: Tool[] = [
  */
 /** "schedule dinner today with ashwani and princy": organizing a meal with other people, not just asking for food. */
 const WANTS_PLAN = /\b(schedule|plan|set up|organi[sz]e|arrange|book|line up|figure out)\b.{0,40}\b(dinner|lunch|breakfast|meal|food|eat|brunch)\b.{0,40}\bwith\b/i;
-export const wantsPlan = (text: string) => WANTS_PLAN.test(text);
+/** "i'm gonna grab dinner with ashwani and princy can you figure out the time and place": a meal with people plus a cue to coordinate it. */
+const WANTS_PLAN_COORDINATED =
+  /\b(dinner|lunch|breakfast|meal|food|eat|brunch)\b.{0,60}\bwith\b.{0,80}\b(figure out|work out|sort out|time|place|when|where|plan|schedule|set (it|that) up|coordinate|text (them|him|her)|ask (them|him|her)|see what)\b/i;
+/** A follow-up like "can you text them and see" after a plan request. */
+const PLAN_FOLLOWUP = /\b(text|message|dm|ask|hit up|check with|reach out to|see (what|if|when))\b.{0,25}\b(them|him|her|they|everyone|both)\b/i;
+export const wantsPlan = (text: string) => WANTS_PLAN.test(text) || WANTS_PLAN_COORDINATED.test(text);
+export const planFollowup = (text: string, lastUserText?: string) => !!lastUserText && wantsPlan(lastUserText) && PLAN_FOLLOWUP.test(text);
 
 const WANTS_FOOD =
   /\b(hungry|starving|famished|hangry|something to eat|place to eat|places to eat|where (should|can|do|to) (i|we|you) (eat|go)|where to eat|what (should|do) (i|we) eat|(wanna|want to|gotta|need to|let'?s|lets) eat|need (some )?food|need (a |some )?(lunch|dinner|breakfast)|grab (some )?(food|lunch|dinner|breakfast|something)|(lunch|dinner|breakfast) (spot|place|ideas?))\b/i;
@@ -283,7 +289,8 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
   const turn: Message[] = [{ role: "user", content: [{ text }] }];
 
   // First step is forced in code for the two messages the model sometimes fumbles: wanting food, and naming a restaurant.
-  const forced = wantsPlan(text) ? "plan_meal" : wantsFood(text) ? "get_location" : namesRestaurant(text) ? "restaurant_dishes" : undefined;
+  const lastUser = [...history].reverse().find((m) => m.role === "user" && m.content?.some((b) => "text" in b && b.text))?.content?.find((b) => "text" in b)?.text;
+  const forced = wantsPlan(text) || planFollowup(text, lastUser) ? "plan_meal" : wantsFood(text) ? "get_location" : namesRestaurant(text) ? "restaurant_dishes" : undefined;
   for (let round = 0; ; round++) {
     const res = await client.send(
       new ConverseCommand({
