@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type Place, type Plan, type PlanDeps, advance, chooseTime, handleReply, label, minutesNow, proposeTime, slotsFor, startPlan, tickPlans, winner } from "../../bot/src/plans.js";
+import { type Place, type Plan, type PlanDeps, advance, altSlotsFor, chooseTime, handleReply, label, minutesNow, parseTimeAnswer, planNoteFor, proposeTime, slotsAround, slotsFor, startPlan, tickPlans, winner } from "../../bot/src/plans.js";
 import { getState, putState } from "../../bot/src/store.js";
 import type { PollRecord, PollSpec } from "../../bot/src/polls.js";
 import type { MeetupCard } from "../../bot/src/meetup-card.js";
@@ -82,7 +82,7 @@ function world(opts: { places?: Place[]; locs?: Record<string, { lat: number; ln
   return w;
 }
 const start = (w: ReturnType<typeof world>, people = ["ashwani", "princy"], extra = {}) =>
-  startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "dinner", day: "today", people, ...extra });
+  startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "dinner", day: "today", people, anytime: true, ...extra });
 
 /** Let the engine look, give people time to stop tapping, and look again (multi-pick polls count once things settle). */
 const go = async (w: ReturnType<typeof world>, id: string) => {
@@ -126,17 +126,16 @@ test("everyone picks the same time and place: both get the details, then the org
   assert.match(w.textsTo(ASHWANI)[0]!, /hey Ashwani, Ashar wants to do dinner today with you and Princy/);
   assert.match(w.textsTo(PRINCY)[0]!, /with you and Ashwani/);
   assert.equal(w.polls.filter((p) => p.title.startsWith("what time")).length, 2);
-  assert.equal(w.textsTo(ASHAR).length, 0); // the organizer hears nothing until it's sorted
+  // The places go out WITH the times, to everyone including the organizer.
+  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 3);
+  assert.equal(w.textsTo(ASHAR).filter((t) => !/where to eat/.test(t)).length, 0); // the organizer hears nothing else until it's sorted
 
   w.tap(ASHWANI, "what time", "7:00 PM");
   w.tap(PRINCY, "what time", "7:00 PM");
-  await go(w, out.planId);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 2); // straight to the place poll
-  assert.match(w.textsTo(ASHWANI).at(-1)!, /7:00 PM it is/);
-
   w.tap(ASHWANI, "where", "Queen Tea");
   w.tap(PRINCY, "where", "India Eats");
   w.tap(PRINCY, "where", "Queen Tea");
+  w.tap(ASHAR, "where", "Queen Tea");
   await go(w, out.planId);
 
   assert.match(w.textsTo(ASHWANI).at(-1)!, /locked in: dinner at Queen Tea, 7:00 PM today\. Ashar and Princy will be there/);
@@ -157,9 +156,8 @@ test("different times: the others are asked to move, and a no drops them, with t
   assert.match(w.textsTo(PRINCY).at(-1)!, /would 6:30 PM work for you instead/);
 
   w.tap(PRINCY, "does 6:30", "nah");
-  await go(w, planId);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 1); // only Ashwani is still in
   w.tap(ASHWANI, "where", "India Eats");
+  w.tap(ASHAR, "where", "India Eats");
   await go(w, planId);
   const told = w.textsTo(ASHAR).at(-1)!;
   assert.match(told, /India Eats at 6:30 PM today\. Ashwani is in/);
@@ -173,20 +171,22 @@ test("a yes to the proposal keeps everyone in", async () => {
   w.tap(PRINCY, "what time", "7:30 PM");
   await go(w, planId);
   w.tap(PRINCY, "does 6:30", "yeah");
-  await go(w, planId);
   w.tap(ASHWANI, "where", "Queen Tea");
   w.tap(PRINCY, "where", "Queen Tea");
+  w.tap(ASHAR, "where", "Queen Tea");
   await go(w, planId);
   assert.match(w.textsTo(ASHAR).at(-1)!, /Queen Tea at 6:30 PM today\. Ashwani and Princy are in/);
 });
 
-test("someone can't make it: the rest carry on and the organizer is told", async () => {
+test("someone can't make it and has no other time either: the rest carry on and the organizer is told", async () => {
   const w = world();
   const { planId } = (await start(w)) as { planId: string };
   w.tap(ASHWANI, "what time", "can't make it");
   w.tap(PRINCY, "what time", "8:00 PM");
   await go(w, planId);
+  w.tap(ASHWANI, "what other time", "none of these");
   w.tap(PRINCY, "where", "Mr. Fries");
+  w.tap(ASHAR, "where", "Mr. Fries");
   await go(w, planId);
   const told = w.textsTo(ASHAR).at(-1)!;
   assert.match(told, /Mr\. Fries Man at 8:00 PM today\. Princy is in/);
@@ -199,8 +199,10 @@ test("everyone says they can't make it: the organizer hears that, nothing else i
   w.tap(ASHWANI, "what time", "can't make it");
   w.tap(PRINCY, "what time", "can't make it");
   await go(w, planId);
+  w.tap(ASHWANI, "what other time", "none of these");
+  w.tap(PRINCY, "what other time", "none of these");
+  await go(w, planId);
   assert.match(w.textsTo(ASHAR).at(-1)!, /couldn't get dinner sorted: nobody can do dinner today/);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 0);
   assert.equal((await w.plan(planId)).stage, "failed");
 });
 
@@ -208,17 +210,16 @@ test("quiet people get one nudge, then are dropped; if nobody answers the organi
   const w = world();
   const { planId } = (await start(w)) as { planId: string };
   w.tap(ASHWANI, "what time", "7:00 PM"); // Princy never answers
+  w.tap(ASHWANI, "where", "Queen Tea");
+  w.tap(ASHAR, "where", "Queen Tea");
   await go(w, planId); // Ashwani's pick settles
-  w.clock += 11 * 60_000;
+  w.clock += 3 * 60_000;
   await advance(await w.plan(planId), w.deps);
   assert.equal(w.textsTo(PRINCY).filter((t) => /poll/.test(t)).length, 1); // nudged
   assert.equal(w.textsTo(ASHWANI).filter((t) => /still need your pick|tap one on the poll/.test(t)).length, 0); // not Ashwani, who answered
   await advance(await w.plan(planId), w.deps);
   assert.equal(w.textsTo(PRINCY).filter((t) => /poll/.test(t)).length, 1); // only once
-  w.clock += 40 * 60_000;
-  await go(w, planId);
-  assert.ok(w.polls.some((p) => p.phone === ASHWANI && p.title === "where to eat?"), "moves on without Princy");
-  w.tap(ASHWANI, "where", "Queen Tea");
+  w.clock += 3 * 60_000; // past the 5 minutes everyone gets to answer
   await go(w, planId);
   assert.match(w.textsTo(ASHAR).at(-1)!, /Queen Tea at 7:00 PM today\. Ashwani is in\n\nPrincy didn't answer/);
 });
@@ -271,10 +272,9 @@ test("the minute-by-minute check moves plans along and ignores finished ones", a
   const { planId } = (await start(w)) as { planId: string };
   w.tap(ASHWANI, "what time", "7:00 PM");
   w.tap(PRINCY, "what time", "7:00 PM");
-  await tick(w);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 2);
   w.tap(ASHWANI, "where", "Queen Tea");
   w.tap(PRINCY, "where", "Queen Tea");
+  w.tap(ASHAR, "where", "Queen Tea");
   await tick(w);
   const sentAfterDone = w.texts.length;
   await tickPlans(w.deps); // a finished plan is no longer ticked
@@ -341,41 +341,23 @@ test("whoever answers first is told to hang tight, once, while the others are ch
   assert.equal(w.textsTo(PRINCY).filter((t) => /hang tight/.test(t)).length, 0); // she hasn't answered yet
 });
 
-test("locations: people not sharing are asked, and the place is picked for where everyone is", async () => {
+test("locations: people not sharing are asked, and the place poll uses whoever has shared", async () => {
   const w = world({ locs: { [ASHAR]: HERE[ASHAR]! } });
-  const { planId } = (await start(w)) as { planId: string };
+  await start(w);
   assert.deepEqual([...w.locRequests].sort(), [ASHWANI, PRINCY]);
-  assert.match(w.textsTo(ASHWANI).at(-1)!, /share your location|tap share/);
-  assert.equal(w.textsTo(ASHAR).length, 0); // the organizer already shares, so nothing to ask
-
-  w.tap(ASHWANI, "what time", "7:00 PM");
-  w.tap(PRINCY, "what time", "7:00 PM");
-  await go(w, planId);
-  // Two people haven't shared yet: the place waits, and everyone is told so.
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 0);
-  assert.match(w.textsTo(ASHWANI).at(-1)!, /hang tight while i find a spot that's close to everyone/);
-
-  w.locs[ASHWANI] = HERE[ASHWANI]!;
-  w.locs[PRINCY] = HERE[PRINCY]!;
-  await go(w, planId);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 2);
-  assert.deepEqual(w.originsSeen.at(-1), [HERE[ASHAR], HERE[ASHWANI], HERE[PRINCY]]);
+  assert.match(w.textsTo(ASHWANI).find((t) => /share your location|tap share/.test(t))!, /share|tap share/);
+  assert.deepEqual(w.originsSeen[0], [HERE[ASHAR]]); // places are worked out right away, from who has shared
   const poll = w.polls.find((p) => p.phone === ASHWANI && p.title === "where to eat?")!;
   assert.ok(poll.plan && poll.multi);
-  assert.match(poll.options[0]!.label, /^Queen Tea · \d+ min$/); // each person sees their own walk
+  assert.equal(poll.options.length, PLACES.length);
 });
 
-test("locations: after a few minutes it goes with whoever shared", async () => {
-  const w = world({ locs: { [ASHAR]: HERE[ASHAR]!, [ASHWANI]: HERE[ASHWANI]! } });
-  const { planId } = (await start(w)) as { planId: string };
-  w.tap(ASHWANI, "what time", "7:00 PM");
-  w.tap(PRINCY, "what time", "7:00 PM");
-  await go(w, planId);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 0);
-  w.clock += 4 * 60_000;
-  await advance(await w.plan(planId), w.deps);
-  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 2);
-  assert.deepEqual(w.originsSeen.at(-1), [HERE[ASHAR], HERE[ASHWANI]]);
+test("locations: everyone sharing gives each person their own walk times", async () => {
+  const w = world();
+  await start(w);
+  assert.deepEqual(w.originsSeen[0], [HERE[ASHAR], HERE[ASHWANI], HERE[PRINCY]]);
+  const poll = w.polls.find((p) => p.phone === ASHWANI && p.title === "where to eat?")!;
+  assert.match(poll.options[0]!.label, /^Queen Tea · \d+ min$/);
 });
 
 test("several places can be ticked; the most-ticked wins, and everyone gets the card with place, time and people", async () => {
@@ -388,6 +370,7 @@ test("several places can be ticked; the most-ticked wins, and everyone gets the 
   w.tap(ASHWANI, "where", "Queen Tea");
   w.tap(ASHWANI, "where", "India Eats");
   w.tap(PRINCY, "where", "India Eats");
+  w.tap(ASHAR, "where", "India Eats");
   await advance(await w.plan(planId), w.deps);
   assert.equal(w.texts.length, placesBefore, "no reply per tapped place");
   await go(w, planId);
@@ -415,4 +398,165 @@ test("the plan card is a real JPEG", async () => {
   assert.equal(jpeg[0], 0xff);
   assert.equal(jpeg[1], 0xd8);
   assert.ok(jpeg.length > 5000);
+});
+
+// ---------- the organizer is asked first, shared context, decline flow ----------
+
+const startNoTime = (w: ReturnType<typeof world>, extra = {}) =>
+  startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "dinner", day: "today", people: ["ashwani", "princy"], ...extra });
+
+test("parseTimeAnswer: bare hours follow the meal, and anytime is its own answer", () => {
+  assert.deepEqual(parseTimeAnswer("7", "dinner"), { hhmm: "19:00" });
+  assert.deepEqual(parseTimeAnswer("around 7:30pm", "dinner"), { hhmm: "19:30" });
+  assert.deepEqual(parseTimeAnswer("noon", "lunch"), { hhmm: "12:00" });
+  assert.deepEqual(parseTimeAnswer("11", "lunch"), { hhmm: "11:00" });
+  assert.deepEqual(parseTimeAnswer("2", "lunch"), { hhmm: "14:00" });
+  assert.deepEqual(parseTimeAnswer("8:15", "breakfast"), { hhmm: "08:15" });
+  assert.deepEqual(parseTimeAnswer("Anytime is good", "dinner"), { anytime: true });
+  assert.equal(parseTimeAnswer("banana", "dinner"), undefined);
+  assert.equal(parseTimeAnswer("25", "dinner"), undefined);
+});
+
+test("slots around a time include it, and alternates sit outside the first options", () => {
+  const first = slotsAround("19:00", "today", AFTERNOON);
+  assert.deepEqual(first, ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30"]);
+  const alts = altSlotsFor({ meal: "dinner", day: "today", slots: first }, AFTERNOON);
+  assert.ok(alts.length > 0 && alts.every((x) => !first.includes(x)));
+  assert.ok(alts.includes("21:00") && alts.includes("17:00"));
+});
+
+test("asking for a plan with no time: the organizer is asked first and nobody else is texted yet", async () => {
+  const w = world();
+  const out = (await startNoTime(w)) as { asking_time?: boolean; planId: string; sent_text?: string };
+  assert.equal(out.asking_time, true);
+  assert.match(w.textsTo(ASHAR)[0]!, /what time/);
+  assert.equal(w.textsTo(ASHWANI).length, 0);
+  assert.equal(w.polls.length, 0);
+  assert.equal((await w.plan(out.planId)).stage, "ask_time");
+});
+
+test("the organizer's answer starts the plan: times around theirs and every place go to everyone", async () => {
+  const w = world();
+  const out = (await startNoTime(w)) as { planId: string };
+  assert.equal(await handleReply(w.deps, ASHAR, "7"), true);
+  assert.match(w.textsTo(ASHWANI)[0]!, /around 7:00 PM/);
+  const times = w.polls.find((p) => p.phone === ASHWANI && p.title.startsWith("what time"))!;
+  assert.ok(times.options.some((o) => o.label === "7:00 PM"));
+  assert.equal(w.polls.filter((p) => p.title === "where to eat?").length, 3);
+  assert.equal((await w.plan(out.planId)).anchor, "19:00");
+  // the organizer stays in: a different agreed time has to work for them too
+  w.tap(ASHWANI, "what time", "8:00 PM");
+  w.tap(PRINCY, "what time", "8:00 PM");
+  await go(w, out.planId);
+  assert.ok(w.polls.some((p) => p.phone === ASHAR && p.title === "does 8:00 PM work?"));
+});
+
+test("anytime skips the question, and a non-answer is asked again", async () => {
+  const w = world();
+  const out = (await startNoTime(w, { anytime: true })) as { asking_time?: boolean };
+  assert.equal(out.asking_time, undefined);
+  assert.ok(w.polls.length > 0);
+  const w2 = world();
+  await startNoTime(w2);
+  assert.equal(await handleReply(w2.deps, ASHAR, "umm not sure"), true);
+  assert.match(w2.textsTo(ASHAR).at(-1)!, /didn't catch that/);
+  assert.equal(await handleReply(w2.deps, ASHAR, "anytime"), true);
+  assert.ok(w2.polls.some((p) => p.phone === ASHWANI));
+  assert.equal(await handleReply(w2.deps, ASHWANI, "7:00"), true); // now a typed answer to Ashwani's time poll
+});
+
+test("cancelling while being asked for a time drops the plan", async () => {
+  const w = world();
+  const { planId } = (await startNoTime(w)) as { planId: string };
+  assert.equal(await handleReply(w.deps, ASHAR, "nvm"), true);
+  assert.equal((await w.plan(planId)).stage, "failed");
+  assert.equal(w.polls.length, 0);
+});
+
+test("shared context lasts 5 minutes: after that typed replies are ordinary chat and the note is gone", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  const note = await planNoteFor(ASHWANI, w.clock + 60_000);
+  assert.match(note!, /Ashar asked to plan dinner today with Ashwani and Princy/);
+  assert.doesNotMatch(note!, /allerg|diet|vegan|halal/i); // logistics only
+  w.clock += 5 * 60_000 + 1000;
+  assert.equal(await planNoteFor(ASHWANI, w.clock), undefined);
+  assert.equal(await handleReply(w.deps, ASHWANI, "7:00"), false);
+  assert.equal((await w.plan(planId)).people[0]!.time!.answer, undefined);
+});
+
+test("an organizer who never answers the time question: the plan lapses after 5 minutes with one polite text", async () => {
+  const w = world();
+  const { planId } = (await startNoTime(w)) as { planId: string };
+  w.clock += 5 * 60_000 + 1000;
+  await advance(await w.plan(planId), w.deps);
+  assert.match(w.textsTo(ASHAR).at(-1)!, /no worries, just tell me when you want to plan dinner/);
+  assert.equal((await w.plan(planId)).stage, "failed");
+  assert.equal(await handleReply(w.deps, ASHAR, "7"), false);
+});
+
+test("someone can't make it: sorry, asked for another time, and the gang is asked to move to it", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  w.tap(ASHWANI, "what time", "can't make it");
+  w.tap(PRINCY, "what time", "6:00 PM");
+  await go(w, planId);
+  assert.match(w.textsTo(ASHWANI).find((t) => /sorry|aw sorry/.test(t))!, /ask the gang if they (could|can) move the slot/);
+  const alt = w.polls.find((p) => p.phone === ASHWANI && p.title.startsWith("what other time"))!;
+  assert.ok(alt.multi && alt.options.some((o) => o.label === "9:00 PM") && alt.options.some((o) => o.value === "none"));
+  assert.ok(!alt.options.some((o) => o.label === "6:00 PM"), "only times outside the first options");
+  assert.equal(w.polls.filter((p) => p.title.startsWith("does ")).length, 0, "nobody is asked to move until they've said what works");
+
+  w.tap(ASHWANI, "what other time", "9:00 PM");
+  await go(w, planId);
+  // Princy is asked to move, and told why
+  const ask = w.polls.find((p) => p.phone === PRINCY && p.title === "does 9:00 PM work?")!;
+  assert.ok(ask);
+  assert.match(w.textsTo(PRINCY).at(-1)!, /Ashwani can't make the earlier times but could do 9:00 PM\. could you move to 9:00 PM\?/);
+  assert.equal(w.polls.filter((p) => p.phone === ASHWANI && p.title.startsWith("does ")).length, 0);
+
+  w.tap(PRINCY, "does 9:00", "yeah");
+  for (const who of [ASHAR, ASHWANI, PRINCY]) w.tap(who, "where", "Queen Tea");
+  await go(w, planId);
+  assert.match(w.textsTo(ASHAR).at(-1)!, /Queen Tea at 9:00 PM today\. Ashwani and Princy are in/);
+});
+
+test("the gang says no to moving: only the people who could do the new time stay in", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  w.tap(ASHWANI, "what time", "can't make it");
+  w.tap(PRINCY, "what time", "6:00 PM");
+  await go(w, planId);
+  w.tap(ASHWANI, "what other time", "9:00 PM");
+  await go(w, planId);
+  w.tap(PRINCY, "does 9:00", "nah");
+  w.tap(ASHWANI, "where", "India Eats");
+  w.tap(ASHAR, "where", "India Eats");
+  await go(w, planId);
+  const told = w.textsTo(ASHAR).at(-1)!;
+  assert.match(told, /India Eats at 9:00 PM today\. Ashwani is in/);
+  assert.match(told, /Princy couldn't do 9:00 PM/);
+});
+
+test("a place that stops fitting before the end is dropped, and with none left the organizer is told", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  for (const who of [ASHWANI, PRINCY]) w.tap(who, "what time", "7:00 PM");
+  for (const who of [ASHAR, ASHWANI, PRINCY]) w.tap(who, "where", "Queen Tea");
+  // someone texts an allergy after the polls went out: only India Eats still fits
+  w.deps.places = async () => [PLACES[1]!];
+  await go(w, planId);
+  assert.match(w.textsTo(ASHAR).at(-1)!, /dinner's set: India Eats/);
+});
+
+test("names are matched against the saved profiles first, so 'Ash' is Ash and not Ashar", async () => {
+  const w = world();
+  w.deps.users = async () => [
+    { firstName: "Ash", lastName: null, phoneNumber: "+17739986828" },
+    { firstName: "Ashar", lastName: null, phoneNumber: ASHAR },
+    { firstName: "Princy", lastName: null, phoneNumber: PRINCY },
+  ];
+  const out = (await startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "lunch", day: "tomorrow", people: ["Ash", "princy"], anytime: true })) as { texting: string[]; ambiguous: string[] };
+  assert.deepEqual(out.texting, ["Ash", "Princy"]);
+  assert.deepEqual(out.ambiguous, []);
 });

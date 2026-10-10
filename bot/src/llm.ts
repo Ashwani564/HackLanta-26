@@ -46,7 +46,7 @@ if they ask what's good at a specific restaurant without the location part, skip
 allergies and diets: pass every allergy and diet they've mentioned anywhere in the conversation to the tools. never say a dish or restaurant is "safe", "allergen-free" or free of an allergen, and never name anyone's allergies in a group chat. restaurant_dishes adds its own allergy note.
 
 other tools:
-- plan_meal: when they ask you to schedule, plan, figure out or set up a meal with other people ("schedule dinner today with ashwani and princy", "i'm gonna grab dinner with x and y, can you figure out the time and place", or a follow-up like "can you text them"). you CAN text people, this tool is how, so never say you can't text them or tell them to message their friends themselves. if they said "my friends" without names, ask who in one short text. you text each of those people separately, work out a time and a place together, and message this person once it's settled. pass the first names as they said them, the meal, and the day (today unless they said tomorrow); if they gave a time constraint ("after 7"), pass earliest_hour or latest_hour (24h). then reply with one casual line like "on it, texting ashwani and princy, i'll ping you once it's sorted". if not_found or ambiguous comes back, say who you couldn't find (they have to be added first: share their contact card with you). if it says it's too late, say so and offer tomorrow.
+- plan_meal: when they ask you to schedule, plan, figure out or set up a meal with other people ("schedule dinner today with ashwani and princy", "i'm gonna grab dinner with x and y, can you figure out the time and place", or a follow-up like "can you text them"). you CAN text people, this tool is how, so never say you can't text them or tell them to message their friends themselves. if they said "my friends" without names, ask who in one short text. you text each of those people separately, work out a time and a place together, and message this person once it's settled. pass the first names as they said them, the meal, and the day (today unless they said tomorrow); if they named a time ("at 7", "around noon"), pass time; if they said any time works, pass anytime true; if they gave a range ("after 7"), pass earliest_hour or latest_hour (24h). if they gave none of those, still call it: it texts them "what time are you thinking?" itself and comes back with asking_time true, so reply with exactly NO_REPLY. otherwise reply with one casual line like "on it, texting ashwani and princy, i'll ping you once it's sorted". if not_found or ambiguous comes back, say who you couldn't find (they have to be added first: share their contact card with you). if it says it's too late, say so and offer tomorrow.
 - create_poll: when the group wants to vote on something. pick 2-5 concrete options yourself if they don't give any. if they ask for a poll about where to eat, that's the food flow above (the spots poll goes out by itself), not create_poll.
 - send_voice_note: only when they ask for a voice reply or sent you a voice note.
 - log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein and price. don't log things they're only thinking about.
@@ -117,6 +117,8 @@ const TOOLS: Tool[] = [
           people: { type: "array", items: { type: "string" }, description: "First names of the people to plan with, as the person said them" },
           meal: { type: "string", enum: ["dinner", "lunch", "breakfast"] },
           day: { type: "string", enum: ["today", "tomorrow"] },
+          time: { type: "string", description: "A time they named for the meal ('7', 'around noon', '6:30pm'). Omit if they didn't say one." },
+          anytime: { type: "boolean", description: "true only if they said any time is fine ('anytime', 'whenever')." },
           earliest_hour: { type: "integer", description: "Earliest hour (0-23) if they said 'after 7' etc." },
           latest_hour: { type: "integer", description: "Latest hour (0-23) if they gave one" },
         },
@@ -210,8 +212,13 @@ const WANTS_PLAN_COORDINATED =
   /\b(dinner|lunch|breakfast|meal|food|eat|brunch)\b.{0,60}\bwith\b.{0,80}\b(figure out|work out|sort out|time|place|when|where|plan|schedule|set (it|that) up|coordinate|text (them|him|her)|ask (them|him|her)|see what)\b/i;
 /** A follow-up like "can you text them and see" after a plan request. */
 const PLAN_FOLLOWUP = /\b(text|message|dm|ask|hit up|check with|reach out to|see (what|if|when))\b.{0,25}\b(them|him|her|they|everyone|both)\b/i;
-export const wantsPlan = (text: string) => WANTS_PLAN.test(text) || WANTS_PLAN_COORDINATED.test(text);
+/** "wanna go grab lunch with ash and princy" / "dinner w/ princy?": an invite to eat with named people. */
+const WANTS_PLAN_INVITE =
+  /\b(wanna|want to|lets?|let's|gonna|going to|can we|should we|how about|down to|trying to|tryna)\b.{0,30}\b(grab|get|go (grab|get|eat|for)|have|do|eat|hit)\b.{0,20}\b(dinner|lunch|breakfast|brunch|food|a bite)\b.{0,12}\b(with|w\/|w)\s+[a-z]/i;
+export const wantsPlan = (text: string) => WANTS_PLAN.test(text) || WANTS_PLAN_COORDINATED.test(text) || WANTS_PLAN_INVITE.test(text);
 export const planFollowup = (text: string, lastUserText?: string) => !!lastUserText && wantsPlan(lastUserText) && PLAN_FOLLOWUP.test(text);
+/** A plan request counts as "the last thing they asked" for follow-ups ("can you text them") only this long. */
+const PLAN_DRAFT_TTL = 5 * 60;
 
 const WANTS_FOOD =
   /\b(hungry|starving|famished|hangry|something to eat|place to eat|places to eat|where (should|can|do|to) (i|we|you) (eat|go)|where to eat|what (should|do) (i|we) eat|(wanna|want to|gotta|need to|let'?s|lets) eat|need (some )?food|need (a |some )?(lunch|dinner|breakfast)|grab (some )?(food|lunch|dinner|breakfast|something)|(lunch|dinner|breakfast) (spot|place|ideas?))\b/i;
@@ -287,12 +294,14 @@ const loadHistory = async (spaceId: string) => (await getState<Message[]>(histor
 const saveHistory = (spaceId: string, history: Message[]) => putState(historyKey(spaceId), trim(history), HISTORY_TTL);
 const MAX_TOOL_ROUNDS = 3;
 
-export async function chat(spaceId: string, text: string, runTool: ToolRunner, who?: { name: string }): Promise<string> {
+export async function chat(spaceId: string, text: string, runTool: ToolRunner, who?: { name: string }, planNote?: string): Promise<string> {
   const history = await loadHistory(spaceId);
   const turn: Message[] = [{ role: "user", content: [{ text }] }];
 
   // First step is forced in code for the two messages the model sometimes fumbles: wanting food, and naming a restaurant.
-  const lastUser = [...history].reverse().find((m) => m.role === "user" && m.content?.some((b) => "text" in b && b.text))?.content?.find((b) => "text" in b)?.text;
+  // The plan request lives in a short-lived key, not in history (which has no timestamps), so a follow-up long after doesn't re-trigger planning.
+  if (wantsPlan(text)) await putState(`plandraft#${spaceId}`, text, PLAN_DRAFT_TTL);
+  const lastUser = await getState<string>(`plandraft#${spaceId}`);
   const forced = wantsPlan(text) || planFollowup(text, lastUser) ? "plan_meal" : wantsFood(text) ? "get_location" : namesRestaurant(text) ? "restaurant_dishes" : undefined;
   for (let round = 0; ; round++) {
     const res = await client.send(
@@ -301,6 +310,8 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner, w
         system: [
           { text: SYSTEM },
           // One-on-one chats only. Restrictions come from their saved profile and are applied by the code, not by you.
+          // Logistics of a plan this person is in (names, times, who's answered), only while its 5-minute context is open.
+          ...(planNote ? [{ text: `a meal plan is in progress that you're coordinating. what's true right now: ${planNote} if they ask about it, answer from this and don't invent details. never mention anyone's allergies, diet or health.` }] : []),
           ...(who ? [{ text: `the person you're texting is ${who.name}, and you know it. if they ask whether you know their name, or what it is, say ${who.name}. any earlier message in this chat saying you don't know their name was from before you knew it; ignore it. use their name now and then, naturally. their saved allergies and diet are already applied to every search, so don't ask about them and don't list them back unless they ask.` }] : []),
         ],
         messages: [...history, ...turn],

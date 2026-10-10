@@ -1,6 +1,6 @@
 // Saved profiles for known people (one item per phone number in USERS_TABLE). Read-only here.
 // Used in one-on-one chats only: a profile must never be read into a group chat's context.
-import { DynamoDBClient, GetItemCommand, type AttributeValue } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, ScanCommand, type AttributeValue } from "@aws-sdk/client-dynamodb";
 
 const TABLE = process.env.USERS_TABLE;
 const ddb = TABLE ? new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-2" }) : undefined;
@@ -50,4 +50,11 @@ export async function getUser(senderId: string | undefined): Promise<UserProfile
     console.warn(`  profile lookup failed: ${(err as Error).message}`);
     return undefined;
   }
+}
+
+/** Everyone with a saved profile (a handful of people, so a scan is fine). Names and phones only: nobody's health details leave this file. */
+export async function listProfiles(): Promise<{ name: string; phone: string }[]> {
+  if (!ddb) return [];
+  const { Items } = await ddb.send(new ScanCommand({ TableName: TABLE, ProjectionExpression: "phone, #n", ExpressionAttributeNames: { "#n": "name" } }));
+  return (Items ?? []).flatMap((i) => (i.phone?.S && i.name?.S ? [{ name: i.name.S, phone: i.phone.S }] : []));
 }

@@ -221,3 +221,10 @@ test("replyText collapses a phrase the model repeated with no space, but leaves 
   assert.equal(replyText(["get the falafel pocket. it's packed with hummus and roasted peppers"]), "get the falafel pocket. it's packed with hummus and roasted peppers");
   assert.equal(replyText(["first thing", "second thing"]), "first thing\n\nsecond thing");
 });
+
+test("wantsPlan also catches an invite to eat with named people", () => {
+  for (const yes of ["Wanna go grab lunch with Ash and Princy", "wanna grab dinner with ashar", "lets get lunch w/ princy and ash", "can we do dinner with Ash tonight", "should we grab food with princy"]) {
+    assert.ok(wantsPlan(yes), `should match: ${yes}`);
+  }
+  for (const no of ["wanna grab lunch", "I'm hungry", "let's get lunch", "I want a burger with fries", "grab a bite"]) assert.ok(!wantsPlan(no), `should not match: ${no}`);
+});

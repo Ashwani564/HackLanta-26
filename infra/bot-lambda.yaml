@@ -93,7 +93,7 @@ Resources:
                 Resource: !GetAtt StateTable.Arn
               - Sid: Users
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+                Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Scan]
                 Resource: !GetAtt UsersTable.Arn
               - Sid: Speech
                 Effect: Allow

@@ -18,7 +18,7 @@ import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
 import { getUser } from "./users.js";
 import { sendDm, sendDmImage } from "./dm.js";
-import { type PlanDeps, handleReply as handlePlanReply, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
+import { type PlanDeps, handleReply as handlePlanReply, planNoteFor, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOC_TTL = 45 * 60;
@@ -216,7 +216,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "plan_meal": {
         if (message.platform !== "imessage" || !message.sender) return { error: "planning only works over iMessage" };
         const out = await startPlan(planDeps, { phone: message.sender.id, chatGuid: space.id }, args);
-        if ("planId" in out) watching = out.planId;
+        // When the organizer is being asked for a time there is nothing to watch yet; their answer starts the plan.
+        if ("planId" in out && !("asking_time" in out)) watching = out.planId;
         return out;
       }
       case "get_directions": {
@@ -232,7 +233,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   const respond = async (text: string) => {
     currentText = text;
     await space.responding(async () => {
-      const reply = await chat(space.id, text, runTool, profile && { name: profile.name });
+      const note = message.sender && !isGroupChat(space.id) ? await planNoteFor(message.sender.id) : undefined;
+      const reply = await chat(space.id, text, runTool, profile && { name: profile.name }, note);
       console.log(`  -> ${reply}`);
       if (reply !== NO_REPLY) await sendBubbles(space, reply);
     });
