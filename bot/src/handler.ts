@@ -18,7 +18,7 @@ import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
 import { getUser } from "./users.js";
-import { sendDm, sendDmCard, sendDmImage } from "./dm.js";
+import { openDm, sendDm, sendDmCard, sendDmImage } from "./dm.js";
 import { type PlanDeps, handleReply as handlePlanReply, isPlanPollTitle, onPlanVote, planNoteFor, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -31,7 +31,7 @@ const CHAIN_MS = Number(process.env.POLL_CHAIN_MS ?? 270_000);
 export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi; plans?: PlanDeps } = {}) {
   const locate = deps.locate ?? realLocate;
   const pollApi = deps.polls ?? realPolls;
-  const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage, sendDmCard);
+  const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage, sendDmCard, openDm);
   // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
   return { handle, invite, tick: () => tickPlans(planDeps) };
 
