@@ -8,7 +8,7 @@ import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
-  chooseDish, clearRestrictions, constraintsFor, declineDirections, directionsLink, directionsPoll, dishPoll,
+  askDirections, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
   mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantPoll, type Origin,
 } from "./dining.js";
 import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type PollRecord, type PollSpec } from "./polls.js";
@@ -57,7 +57,9 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     if (!out.text) return { error: out.error ?? "couldn't find that one", options: out.options };
     await sendBubbles(space, out.text);
     console.log(`  dishes: ${out.text.replace(/\n+/g, " | ")}`);
-    queued = dishPoll(out.restaurant!, out.choices!) ?? directionsPoll(out.restaurant!);
+    queued = dishPoll(out.restaurant!, out.choices!);
+    // Only one pick to choose from means no poll; go straight to the directions question (text).
+    if (!queued) await space.send(askDirections());
     return { sent: true, sent_text: out.text };
   };
 
@@ -77,21 +79,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await space.send("hm, which one did you mean?");
           return {};
         }
-        await space.send(out.text);
-        return { said: out.text, ...(out.next && { next: out.next }) };
-      }
-      case "directions": {
-        if (value === "yes") {
-          const dir = await directionsLink(space.id);
-          if (dir.url) {
-            await space.send(dir.url);
-            return { said: `here's the walk to ${dir.name}: ${dir.url}` };
-          }
-          return {};
-        }
-        const said = declineDirections();
-        await space.send(said);
-        return { said };
+        await sendBubbles(space, out.text);
+        return { said: out.text };
       }
     }
   };
@@ -103,6 +92,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     while (spec && Date.now() < deadline) {
       let rec: PollRecord;
       try {
+        // Name the options in a text first, then poll on exactly those.
+        if (spec.intro) await sendBubbles(space, spec.intro);
         rec = await pollApi.send(space.id, spec);
       } catch (err) {
         console.warn(`  poll failed, asking in text instead: ${(err as Error).message}`);
@@ -180,8 +171,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       case "pick_dish": {
         const out = await chooseDish(space.id, String(args.dish ?? ""));
         if (!out.text) return { error: out.error ?? "couldn't match that dish" };
-        await space.send(out.text);
-        queued = out.next;
+        await sendBubbles(space, out.text);
         return { sent: true, sent_text: out.text };
       }
       case "get_directions": {

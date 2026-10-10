@@ -4,9 +4,11 @@
 import { im } from "./photon.js";
 import { getState, putState } from "./store.js";
 
-export type PollKind = "restaurant" | "dish" | "directions";
+export type PollKind = "restaurant" | "dish";
 export interface PollSpec {
   kind: PollKind;
+  /** Sent as a text right before the poll (e.g. naming the options), so the poll matches what was just said. */
+  intro?: string;
   title: string;
   /** label is what the person sees; value is what the flow gets back. */
   options: { label: string; value: string }[];

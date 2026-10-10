@@ -56,7 +56,7 @@ const scripts: Record<string, string[]> = {
   allergy: ["im allergic to peanuts, need something to eat", "india eats", "something spicy"],
   far: ["what should i eat"],
   never: ["i need food"],
-  chat: ["hey", "what's up", "lol ok", "can you make a poll for where to eat tonight"],
+  chat: ["hey", "lol ok", "can you make a poll for where to eat tonight"],
   directions: ["i am hungry", "queen tea", "yeah", "thanks"],
   nodirections: ["hungry af", "india eats", "nah im good"],
 };

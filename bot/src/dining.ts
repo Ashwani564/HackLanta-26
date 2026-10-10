@@ -87,6 +87,29 @@ interface Destination {
 }
 
 const nearKey = (spaceId: string) => `near#${spaceId}`;
+/** Spots we name and poll. Three is enough to choose from without turning it into a list to read. */
+const MAX_SPOTS = 3;
+
+/**
+ * Nearest-first, but don't offer two of the same kind of place (Saxby's and Starbucks) while a different
+ * one is close by. Falls back to plain nearest if there isn't enough variety.
+ */
+export function pickVaried<T extends { r: { cuisine: string[] }; km: number }>(nearestFirst: T[], n: number): T[] {
+  const chosen: T[] = [];
+  const kinds = new Set<string>();
+  for (const x of nearestFirst) {
+    if (chosen.length === n) break;
+    const kind = x.r.cuisine[0] ?? "";
+    if (kind && kinds.has(kind)) continue;
+    kinds.add(kind);
+    chosen.push(x);
+  }
+  for (const x of nearestFirst) {
+    if (chosen.length === n) break;
+    if (!chosen.includes(x)) chosen.push(x);
+  }
+  return chosen.sort((a, b) => a.km - b.km);
+}
 const priceRange = (r: RestaurantSummary) =>
   r.minPriceUsd === null || r.maxPriceUsd === null ? undefined : `$${Math.round(r.minPriceUsd)}-${Math.round(r.maxPriceUsd)}`;
 
@@ -97,7 +120,7 @@ export async function nearbyRestaurants(spaceId: string, origin: Origin, constra
     .sort((a, b) => a.km - b.km)
     .map(({ r, km }) => ({ r, km, walkMin: Math.max(1, Math.round(km / WALK_KM_PER_MIN)) }));
 
-  const close = ranked.filter((x) => x.km <= NEARBY_KM).slice(0, 5);
+  const close = pickVaried(ranked.filter((x) => x.km <= NEARBY_KM), MAX_SPOTS);
   const shown = close.length > 0 ? close : ranked.slice(0, 2);
   const farAway = close.length === 0 && shown.length > 0;
 
@@ -255,12 +278,29 @@ export async function restaurantDishes(
 // ---------- the choices, as polls ----------
 // Each step returns the next poll to send (or nothing). Typed answers and poll votes both go through here.
 
-export function restaurantPoll(near: Awaited<ReturnType<typeof nearbyRestaurants>>): PollSpec | undefined {
+type Near = Awaited<ReturnType<typeof nearbyRestaurants>>;
+
+/** The text that names the spots. Built from the same list as the poll, so the two always match. */
+export function spotsText(spots: Near["restaurants"]): string {
+  const [a, b, c] = spots;
+  if (!a || !b) return "";
+  const min = (r: { walk_minutes: number }) => `${r.walk_minutes} min`;
+  if (!c) return `${a.name} is ${min(a)} away, ${b.name} is ${min(b)}`;
+  return pick([
+    `${a.name} is a ${min(a)} walk, ${b.name} is ${min(b)}, and ${c.name} is ${min(c)}`,
+    `closest are ${a.name} (${min(a)}), ${b.name} (${min(b)}) and ${c.name} (${min(c)})`,
+    `${a.name} is ${min(a)} away, ${b.name} ${min(b)}, ${c.name} ${min(c)}`,
+  ]);
+}
+
+export function restaurantPoll(near: Near): PollSpec | undefined {
   if (near.far_away || near.restaurants.length < 2) return undefined;
+  const spots = near.restaurants.slice(0, MAX_SPOTS);
   return {
     kind: "restaurant",
+    intro: spotsText(spots),
     title: "pick a spot",
-    options: near.restaurants.slice(0, 4).map((r) => ({ label: `${r.name} · ${r.walk_minutes} min`, value: r.name })),
+    options: spots.map((r) => ({ label: `${r.name} · ${r.walk_minutes} min`, value: r.name })),
   };
 }
 
@@ -269,19 +309,11 @@ export function dishPoll(restaurant: string, choices: readonly DishChoice[]): Po
   return { kind: "dish", title: `what are you getting at ${restaurant}?`, options: choices.map((c) => ({ label: c.label, value: c.name })) };
 }
 
-export function directionsPoll(restaurant: string): PollSpec {
-  return {
-    kind: "directions",
-    title: `want directions to ${restaurant}?`,
-    options: [
-      { label: "yeah", value: "yes" },
-      { label: "nah", value: "no" },
-    ],
-  };
-}
+/** Asked in plain text after they pick a dish (no poll). The map link is only sent if they say yes. */
+export const askDirections = () => pick(["want directions?", "need directions over there?", "want me to send the walk there?"]);
 
-/** They chose a dish: a short reaction with the numbers if we have them, then offer directions. */
-export async function chooseDish(spaceId: string, said: string): Promise<{ text?: string; next?: PollSpec; error?: string }> {
+/** They chose a dish: a short reaction with the numbers if we have them, then a plain-text offer of directions. */
+export async function chooseDish(spaceId: string, said: string): Promise<{ text?: string; error?: string }> {
   const saved = await getState<{ restaurant: string; choices: DishChoice[] }>(dishesKey(spaceId));
   if (!saved) return { error: "no dishes offered yet" };
   const want = squash(said);
@@ -293,7 +325,5 @@ export async function chooseDish(spaceId: string, said: string): Promise<{ text?
       ? [`nice, the ${dish.name} runs ${facts}`, `good call, ${facts} on the ${dish.name}`, `the ${dish.name}, solid. ${facts}`]
       : [`nice pick, the ${dish.name}`, `good call on the ${dish.name}`, `the ${dish.name}, solid`],
   );
-  return { text, next: directionsPoll(saved.restaurant) };
+  return { text: `${text}\n\n${askDirections()}` };
 }
-
-export const declineDirections = () => pick(["ok, enjoy", "cool, enjoy it", "ok, lmk if you want something else after"]);

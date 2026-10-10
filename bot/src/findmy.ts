@@ -1,5 +1,6 @@
 // Find My via Photon's low-level iMessage SDK (see photon.ts).
 import { im } from "./photon.js";
+import { getState, putState } from "./store.js";
 
 export type LocationResult =
   | {
@@ -14,7 +15,7 @@ export type LocationResult =
       /** True when they tapped share just now, in answer to our request. */
       justShared: boolean;
     }
-  | { status: "not_shared"; reason: string };
+  | { status: "not_shared"; reason: string; /** We already asked a moment ago and are waiting for their tap; don't ask again. */ already_asked?: boolean };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]!;
@@ -26,26 +27,33 @@ const ASK_LINES = [
   "one sec, need to see where you're at. tap share on this",
 ] as const;
 
-/** A fix with coordinates, or undefined if they aren't sharing (or the device is still locating). */
-async function read(address: string): Promise<Extract<LocationResult, { status: "sharing" }> | undefined> {
+type Fix = Extract<LocationResult, { status: "sharing" }>;
+/** "locating" means they ARE sharing but the phone hasn't produced coordinates yet: wait, don't ask again. */
+type Read = { fix: Fix } | { locating: true } | { none: true };
+
+async function read(address: string): Promise<Read> {
   try {
     const loc = await im.locations.get(address);
-    if (loc.latitude === undefined || loc.longitude === undefined) return undefined;
+    if (loc.latitude === undefined || loc.longitude === undefined) return { locating: true };
     const ts = loc.locationTimestamp ? new Date(loc.locationTimestamp).getTime() : undefined;
     return {
-      status: "sharing",
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-      ...(loc.shortAddress && { place: loc.shortAddress }),
-      ...(loc.longAddress && { fullAddress: loc.longAddress }),
-      ...(ts !== undefined && { ageMinutes: Math.max(0, Math.round((Date.now() - ts) / 60000)) }),
-      justShared: false,
+      fix: {
+        status: "sharing",
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        ...(loc.shortAddress && { place: loc.shortAddress }),
+        ...(loc.longAddress && { fullAddress: loc.longAddress }),
+        ...(ts !== undefined && { ageMinutes: Math.max(0, Math.round((Date.now() - ts) / 60000)) }),
+        justShared: false,
+      },
     };
   } catch (err: any) {
-    if (err?.name === "NotFoundError") return undefined;
+    if (err?.name === "NotFoundError") return { none: true };
     throw err;
   }
 }
+
+const askedKey = (chatGuid: string) => `askedloc#${chatGuid}`;
 
 /**
  * Where is this person right now? Reads their Find My share if they have one running. If not, says so
@@ -57,18 +65,39 @@ export async function locate(
   address: string,
   opts: { say: (text: string) => Promise<unknown>; waitMs?: number },
 ): Promise<LocationResult> {
-  const now = await read(address);
-  if (now) return now;
+  // 1. Already sharing? Then there is nothing to ask. Use it straight away.
+  let now = await read(address);
+  if ("fix" in now) return now.fix;
 
-  await opts.say(pick(ASK_LINES));
-  const receipt = await im.locations.request(chatGuid, address);
-  console.log(`  find my request -> ${receipt.status}${receipt.reason ? ` (${receipt.reason})` : ""}`);
-
-  const deadline = Date.now() + (opts.waitMs ?? 60_000);
-  while (Date.now() < deadline) {
-    await sleep(3000);
-    const shared = await read(address);
-    if (shared) return { ...shared, justShared: true };
+  // 2. Sharing, but the phone is still working out where it is: give it a few seconds, still without asking.
+  if ("locating" in now) {
+    for (let i = 0; i < 6 && "locating" in now; i++) {
+      await sleep(2000);
+      now = await read(address);
+    }
+    if ("fix" in now) return { ...now.fix, justShared: true };
+    return { status: "not_shared", reason: "they're sharing but their phone hasn't produced a location yet" };
   }
-  return { status: "not_shared", reason: "they haven't tapped share yet" };
+
+  // 3. Not sharing. Ask once: if a request is already out and we're waiting on their tap, don't pile on another card.
+  if (await getState<number>(askedKey(chatGuid))) {
+    return { status: "not_shared", reason: "already asked, waiting for them to tap share on the card above", already_asked: true };
+  }
+  const waitMs = opts.waitMs ?? 60_000;
+  await putState(askedKey(chatGuid), Date.now(), Math.ceil(waitMs / 1000) + 15);
+  try {
+    await opts.say(pick(ASK_LINES));
+    const receipt = await im.locations.request(chatGuid, address);
+    console.log(`  find my request -> ${receipt.status}${receipt.reason ? ` (${receipt.reason})` : ""}`);
+
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+      await sleep(3000);
+      const shared = await read(address);
+      if ("fix" in shared) return { ...shared.fix, justShared: true };
+    }
+    return { status: "not_shared", reason: "they haven't tapped share yet" };
+  } finally {
+    await putState(askedKey(chatGuid), null, 1);
+  }
 }

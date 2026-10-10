@@ -9,10 +9,10 @@ No Gemini and no third-party AI keys.
 
 **"I'm hungry"** goes through one flow, and every choice is a tappable iMessage poll:
 
-1. It never guesses where you are. If you aren't sharing, it asks casually and sends a Find My request card, then waits for you to tap share.
-2. It reads your location, comments on where you are, and polls you with the nearest restaurants that have food you can eat (with walk times).
+1. It never guesses where you are. It checks Find My first; if you're already sharing it just uses it. Only if you aren't does it ask casually, send a Find My request card (once), and wait for you to tap share.
+2. It comments on where you are, sends one text naming the three nearest places with food you can eat (with walk times, not two of the same kind), then a poll of exactly those three.
 3. You pick a spot, and it sends two dish picks from that restaurant, then a poll to choose one.
-4. It reacts to your pick (calories, protein) and polls "want directions?". The Apple Maps link is sent only if you say yes.
+4. It reacts to your pick (calories, protein) and asks "want directions?" in plain text. The Apple Maps link is sent only if you say yes.
 
 You can type instead of tapping and it follows along. Other things it does:
 

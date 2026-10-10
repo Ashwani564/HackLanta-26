@@ -3,7 +3,7 @@ import test from "node:test";
 import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/explain.js";
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
-import { composeDishMessage, directionsPoll, dishPoll, restaurantPoll, tidyName } from "../../bot/src/dining.js";
+import { composeDishMessage, dishPoll, pickVaried, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
 const peanut: Constraints = { ...none, allergens: ["peanuts"] };
@@ -62,20 +62,42 @@ test("dish message never claims a dish is safe or allergen-free", () => {
   for (let i = 0; i < 30; i++) assert.doesNotMatch(composeDishMessage("Moe's", picks, peanut), SAFETY_CLAIM);
 });
 
-test("choice polls: restaurants, dishes and directions", () => {
-  const near = { restaurants: [{ name: "Queen Tea", walk_minutes: 1, miles_away: 0.1, cuisine: [], typical_meal_price: undefined }, { name: "India Eats", walk_minutes: 2, miles_away: 0.1, cuisine: [], typical_meal_price: undefined }], far_away: false, none_match_restrictions: false };
-  const r = restaurantPoll(near)!;
-  assert.equal(r.kind, "restaurant");
-  assert.deepEqual(r.options.map((o) => o.label), ["Queen Tea · 1 min", "India Eats · 2 min"]);
-  assert.deepEqual(r.options.map((o) => o.value), ["Queen Tea", "India Eats"]);
-  assert.equal(restaurantPoll({ ...near, far_away: true }), undefined); // nothing near them: no poll, the model says so
-  assert.equal(restaurantPoll({ ...near, restaurants: near.restaurants.slice(0, 1) }), undefined); // a poll needs two options
+const spot = (name: string, walk_minutes: number) => ({ name, walk_minutes, miles_away: 0.1, cuisine: [], typical_meal_price: undefined });
 
+test("the text that names the spots and the poll come from the same three", () => {
+  const near = { restaurants: [spot("Saxby's", 2), spot("Queen Tea", 3), spot("India Eats", 3), spot("Mr. Fries Man", 4)], far_away: false, none_match_restrictions: false };
+  const poll = restaurantPoll(near)!;
+  assert.equal(poll.kind, "restaurant");
+  assert.equal(poll.options.length, 3); // capped at three, never four
+  assert.deepEqual(poll.options.map((o) => o.value), ["Saxby's", "Queen Tea", "India Eats"]);
+  assert.deepEqual(poll.options.map((o) => o.label), ["Saxby's · 2 min", "Queen Tea · 3 min", "India Eats · 3 min"]);
+  // Every option is named, with its walk time, in the text that comes right before the poll.
+  for (let i = 0; i < 20; i++) {
+    const text = restaurantPoll(near)!.intro!;
+    for (const o of poll.options) assert.ok(text.includes(o.value), `intro is missing ${o.value}: ${text}`);
+    assert.ok(!text.includes("Mr. Fries Man"), "the fourth spot must not be mentioned");
+    for (const m of ["2 min", "3 min"]) assert.ok(text.includes(m));
+  }
+  assert.equal(spotsText([spot("A", 1), spot("B", 2)]), "A is 1 min away, B is 2 min");
+});
+
+test("no poll when nothing is near or there's only one spot", () => {
+  const one = { restaurants: [spot("Queen Tea", 1)], far_away: false, none_match_restrictions: false };
+  assert.equal(restaurantPoll(one), undefined);
+  assert.equal(restaurantPoll({ ...one, restaurants: [spot("A", 1), spot("B", 2)], far_away: true }), undefined);
+});
+
+test("spots are varied: not two cafes while something different is close", () => {
+  const e = (id: string, cuisine: string[], km: number) => ({ id, r: { cuisine }, km });
+  const sorted = [e("saxbys", ["cafe"], 0.1), e("starbucks", ["cafe"], 0.2), e("queen", ["taiwanese"], 0.3), e("india", ["indian"], 0.4)];
+  assert.deepEqual(pickVaried(sorted, 3).map((x) => x.id), ["saxbys", "queen", "india"]);
+  // Not enough variety: fall back to nearest rather than offering fewer.
+  const cafes = [e("a", ["cafe"], 0.1), e("b", ["cafe"], 0.2), e("c", ["cafe"], 0.3)];
+  assert.deepEqual(pickVaried(cafes, 3).map((x) => x.id), ["a", "b", "c"]);
+});
+
+test("dish poll needs two choices", () => {
   const choices = [{ label: "Beef Rice ($14.99)", name: "Beef Rice", calories: 650, proteinG: 38 }, { label: "Nuggets ($10.39)", name: "Nuggets", calories: null, proteinG: null }];
   assert.equal(dishPoll("Queen Tea", choices)!.options[0]!.value, "Beef Rice");
   assert.equal(dishPoll("Queen Tea", choices.slice(0, 1)), undefined);
-
-  const d = directionsPoll("Queen Tea");
-  assert.deepEqual(d.options.map((o) => o.value), ["yes", "no"]);
-  assert.match(d.title, /Queen Tea/);
 });
