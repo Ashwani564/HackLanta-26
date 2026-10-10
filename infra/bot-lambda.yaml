@@ -89,7 +89,7 @@ Resources:
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${PhotonSecretName}-*
               - Sid: State
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem]
                 Resource: !GetAtt StateTable.Arn
               - Sid: Users
                 Effect: Allow
@@ -134,6 +134,25 @@ Resources:
           BOT_TIMEZONE: America/New_York
           POLL_CHAIN_MS: "240000"
           NODE_OPTIONS: --enable-source-maps
+
+  # Every minute: read poll answers and move "schedule dinner with..." plans forward (bot/src/plans.ts).
+  PlanTickRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: plan-tick
+          Arn: !GetAtt BotFunction.Arn
+          Input: '{"kind":"tick"}'
+
+  PlanTickPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BotFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PlanTickRule.Arn
 
   # The webhook hands each delivery to an async self-invocation. A retry would re-run a flow that is
   # already waiting on a tap, so retries are off (deliveries are also deduped on message id).

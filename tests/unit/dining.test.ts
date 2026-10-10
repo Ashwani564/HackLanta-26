@@ -4,7 +4,7 @@ import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/exp
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
 import { isGroupChat, mentionsBot, shouldRespond } from "../../bot/src/addressing.js";
-import { replyText, wantsFood } from "../../bot/src/llm.js";
+import { planFollowup, replyText, wantsFood, wantsPlan } from "../../bot/src/llm.js";
 import { composeDishMessage, directionsAnswer, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
@@ -196,4 +196,21 @@ test("a bare yes or no after 'want directions?' is recognized; anything else is 
   for (const y of ["Sure", "sure ", "yeah!", "Yes please", "ok", "yep."]) assert.equal(directionsAnswer(y), "yes", y);
   for (const n of ["no", "Nope", "no thanks", "nvm", "i'm good"]) assert.equal(directionsAnswer(n), "no", n);
   for (const other of ["sure, but what about saxby's", "what else is there", "yes and cheaper", "not mexican"]) assert.equal(directionsAnswer(other), null, other);
+});
+
+test("wantsPlan catches a meal with named people, not a plain food ask", () => {
+  for (const yes of [
+    "schedule dinner today with ashwani and princy",
+    "I’m  gonna grab dinner with Ashwani and princy can you figure out the time and place ",
+    "figure out dinner with my friends",
+    "want to get lunch with sam, can you set it up",
+  ]) assert.ok(wantsPlan(yes), `should match: ${yes}`);
+  for (const no of ["I'm hungry", "grab dinner", "Looking to grab lunch ", "need something vegan"]) assert.ok(!wantsPlan(no), `should not match: ${no}`);
+});
+
+test("planFollowup only fires right after a plan request", () => {
+  const plan = "grab dinner with ashwani and princy, figure out the time and place";
+  assert.ok(planFollowup("Can you text them and see ", plan));
+  assert.ok(!planFollowup("Can you text them and see ", "I'm hungry"));
+  assert.ok(!planFollowup("Can you text them and see ", undefined));
 });
