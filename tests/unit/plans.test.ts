@@ -560,3 +560,15 @@ test("names are matched against the saved profiles first, so 'Ash' is Ash and no
   assert.deepEqual(out.texting, ["Ash", "Princy"]);
   assert.deepEqual(out.ambiguous, []);
 });
+
+test("asking for a meal that's already over today says so first and texts nobody", async () => {
+  const w = world();
+  w.clock = Date.UTC(2026, 9, 10, 20, 10); // 4:10 PM: lunch is over
+  const out = (await startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "lunch", day: "today", people: ["ashwani", "princy"] })) as { error?: string };
+  assert.match(out.error!, /too late for lunch today/);
+  assert.equal(w.texts.length, 0);
+  assert.equal(w.polls.length, 0);
+  // dinner at the same moment is fine
+  const dinner = (await startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "dinner", day: "today", people: ["ashwani", "princy"] })) as { asking_time?: boolean };
+  assert.equal(dinner.asking_time, true);
+});

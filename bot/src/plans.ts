@@ -683,12 +683,14 @@ export async function startPlan(d: PlanDeps, who: { phone: string; chatGuid: str
   const anchor = named && "hhmm" in named ? named.hhmm : undefined;
   // No time, no range and no "anytime": the organizer is asked what time they're thinking before anyone else is texted.
   const mustAsk = anchor === undefined && e === undefined && l === undefined && args.anytime !== true && !(named && "anytime" in named);
+  // Say so up front if the meal is over for the day, before asking anyone anything (the default window can't be met).
+  if (mustAsk && slotsFor(meal, day, d.now()).length < 2) return { error: `too late for ${meal} ${day}; offer tomorrow or a later meal, and don't say you're texting anyone` };
   const slots = mustAsk
     ? []
     : anchor
       ? slotsAround(anchor, day, d.now())
       : slotsFor(meal, day, d.now(), { ...(e !== undefined && { earliestHour: e }), ...(l !== undefined && { latestHour: l }) });
-  if (!mustAsk && (slots.length < 2 || (anchor && !slots.includes(anchor)))) return { error: `too late for ${meal} ${day}; offer tomorrow or a later time` };
+  if (!mustAsk && (slots.length < 2 || (anchor && !slots.includes(anchor)))) return { error: `too late for ${meal} ${day}; offer tomorrow or a later time, and don't say you're texting anyone` };
 
   const plan: Plan = {
     id: Math.random().toString(36).slice(2, 8),
