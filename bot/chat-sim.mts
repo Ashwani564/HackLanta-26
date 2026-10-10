@@ -17,7 +17,7 @@ const space = (id: string) => ({
   send: async (t: any) => console.log(`   📱 ${typeof t === "string" ? t.replace(/\n/g, "\n      ") : "[card/other]"}`),
   responding: async (fn: () => Promise<any>) => fn(),
 });
-const sp = space(`any;-;+1555000${scenario.length}${Date.now() % 1000}`);
+const sp = space(scenario === "group" ? `any;+;chat-sim-${Date.now()}` : `any;-;+1555000${scenario.length}${Date.now() % 1000}`);
 // Fake polls: print the poll, then "tap" the next choice from the scenario's plan (index or value).
 const taps: (number | string)[] = scenario === "polls" ? [0, 0, "yes"] : scenario === "polls-no" ? [1, 1, "no"] : scenario === "polls-skip" ? [] : [];
 const polls = {
@@ -40,10 +40,13 @@ const { handle } = createHandler({}, {
     return loc;
   },
 });
-const say = async (text: string) => {
-  console.log(`\n🙋 ${text}`);
+const say = async (raw: string) => {
+  // In the group scenario, "other: ..." is a different person talking.
+  const other = raw.startsWith("other: ");
+  const text = other ? raw.slice(7) : raw;
+  console.log(`\n🙋 ${other ? "(someone else) " : ""}${text}`);
   const t = Date.now();
-  await handle(sp, { id: `m${n++}`, platform: "imessage", direction: "inbound", sender: { id: "+15550001111" }, content: { type: "text", text }, reply: async (t: string) => sp.send(t), react: async () => {} });
+  await handle(sp, { id: `m${n++}`, platform: "imessage", direction: "inbound", sender: { id: other ? "+15550002222" : "+15550001111" }, content: { type: "text", text }, reply: async (t: string) => sp.send(t), react: async () => {} });
   console.log(`   (${((Date.now() - t) / 1000).toFixed(1)}s)`);
 };
 
@@ -54,6 +57,7 @@ const scripts: Record<string, string[]> = {
   "polls-skip": ["im starving"],
   typed: ["hungry", "queen tea", "the beef rice", "yeah"],
   friend: ["Need a place to eat with my friend", "hey"],
+  group: ["anyone want tacos", "other: lol i'm so tired", "hey bot im hungry", "queen tea", "other: i'm good", "ok thanks"],
   price: ["hungry", "mr fries man", "strikeout wingz", "mangos", "stir house", "saxbys", "starbucks"],
   allergy: ["im allergic to peanuts, need something to eat", "india eats", "something spicy"],
   far: ["what should i eat"],

@@ -25,6 +25,11 @@ You can type instead of tapping and it follows along. Other things it does:
 | A friend's contact card | Registers them as a Photon user and texts them an intro. They can reply STOP. |
 | `/reset` | Clears the chat's memory, restrictions and saved location. |
 
+**Group chats:** the bot stays quiet unless someone talks to it ("hey bot, where should we eat"). That person's follow-ups
+count for a couple of minutes; everyone else's chatter is dropped before anything reads or stores it. In one-on-one chats it
+always answers. Set `BOT_NAMES` (comma-separated) once the bot has a name. Groups only reach the bot on Photon's Business
+(dedicated line) plan; Free and Pro use the shared pool, which can't see group chats.
+
 **Allergies and diets are enforced in code, never by the model.** Every dish passes the SQL filters and a second code check
 (`src/pipeline/filter.ts`) before the model sees it, restrictions mentioned anywhere in a chat accumulate and are never forgotten,
 and allergy wording ("double check with them…") is added by code. A guard rewrites any model text that claims something is
@@ -104,7 +109,7 @@ bot/
 
 - **Voice notes on Lambda need an ffmpeg layer** (`scripts/build-ffmpeg-layer.sh`, then `npm run deploy`). Without it the bot asks people to type. Check it with `aws lambda invoke --function-name dining-bot --payload '{"kind":"selftest"}' --cli-binary-format raw-in-base64-out out.json`. Locally, ffmpeg from your PATH is used (macOS `afconvert` is the fallback).
 - **Polls**: votes are read by checking the poll's state every 2 s, because it isn't known that Photon's webhook forwards vote events. If you type an answer instead, the typed path takes over.
-- **Group chats** need Photon's Business plan (shared lines can't create or see groups).
+- **Group chats** need Photon's Business plan: Free and Pro are both the shared pool, which can't create or see groups. The "only when addressed" logic is built and tested but dormant until groups reach the bot. Group flows also still treat the first vote as the answer and keep restrictions per chat, not per person.
 - **Coverage** is the 9 restaurants around GSU. Far from campus, the bot says so instead of guessing.
 - **Allergen data** is mostly estimated; the bot says so and always tells people to confirm with the restaurant.
 - The database pauses when idle; the first query after a pause takes ~15-20 s. The bot wakes it while you're tapping share.

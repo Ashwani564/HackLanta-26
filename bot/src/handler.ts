@@ -15,6 +15,7 @@ import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type Po
 import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./invite.js";
 import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
+import { isGroupChat, shouldRespond } from "./addressing.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOC_TTL = 45 * 60;
@@ -32,8 +33,16 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
   // Read receipts and typing signals are noise for now.
   if (message.content.type === "read" || message.content.type === "typing") return;
 
+  // In a group chat, stay quiet unless someone talks to the bot. Chatter that isn't for it is dropped here, before
+  // anything reads or stores it, and isn't even logged.
+  const text = message.content.type === "text" ? (message.content.text as string) : undefined;
+  if (!(await shouldRespond(space.id, message.sender?.id, message.content.type, text))) {
+    console.log(`[${message.platform}] group chat: not addressed to me, staying quiet`);
+    return;
+  }
+
   const from = message.sender?.id ?? "unknown";
-  const body = message.content.type === "text" ? ` "${message.content.text}"` : "";
+  const body = text !== undefined ? ` "${text}"` : "";
   console.log(`[${message.platform}] ${space.id} ${from}: ${message.content.type}${body}`);
 
   // The next choice to offer as a poll. Sent after the reply text so the order reads naturally.

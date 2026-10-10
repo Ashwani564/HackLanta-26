@@ -3,6 +3,7 @@ import test from "node:test";
 import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/explain.js";
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
+import { isGroupChat, mentionsBot, shouldRespond } from "../../bot/src/addressing.js";
 import { replyText, wantsFood } from "../../bot/src/llm.js";
 import { composeDishMessage, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
@@ -163,4 +164,30 @@ test("a reply the model repeats is sent once, and chunks never run together", ()
   assert.equal(replyText(["first thing", "second thing"]), "first thing\n\nsecond thing"); // different chunks stay separate texts
   assert.equal(replyText(["", "  "]), "");
   assert.equal(replyText(["ok ok"]), "ok ok"); // short repeated words are left alone
+});
+
+test("group chats: the bot answers only when addressed, and DMs always get an answer", async () => {
+  const names = ["bot", "food bot", "chewsy"];
+  for (const yes of ["hey bot where should we eat", "Bot?", "@bot hungry", "chewsy what's good", "ok food bot, lunch", "thanks bot!"]) assert.ok(mentionsBot(yes, names), yes);
+  for (const no of ["where should we eat", "lol", "that robot is cool", "botanical garden?", "I'm hungry", "abbot costello"]) assert.ok(!mentionsBot(no, names), no);
+
+  assert.ok(isGroupChat("any;+;chat123456"));
+  assert.ok(!isGroupChat("any;-;+16624978806"));
+
+  // One-on-one: always.
+  assert.equal(await shouldRespond("any;-;+1555", "+1555", "text", "hello"), true);
+  assert.equal(await shouldRespond("any;-;+1555", "+1555", "attachment"), true);
+
+  // Group: ignored until addressed.
+  const g = `any;+;chat-${Date.now()}`;
+  assert.equal(await shouldRespond(g, "+1111", "text", "anyone want tacos"), false);
+  assert.equal(await shouldRespond(g, "+1111", "attachment"), false); // a photo nobody asked the bot about
+  assert.equal(await shouldRespond(g, "+1111", "text", "hey bot, i'm hungry"), true); // addressed
+  // ...then that same person's follow-ups are part of the conversation for a couple of minutes.
+  assert.equal(await shouldRespond(g, "+1111", "text", "queen tea"), true);
+  assert.equal(await shouldRespond(g, "+1111", "attachment"), true);
+  // A different person who hasn't addressed the bot is still ignored.
+  assert.equal(await shouldRespond(g, "+2222", "text", "queen tea sounds good"), false);
+  // Poll taps are left to the poll logic.
+  assert.equal(await shouldRespond(g, "+2222", "poll_option"), true);
 });
