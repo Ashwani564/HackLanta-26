@@ -1,10 +1,14 @@
 // "Schedule dinner with Ashwani and Princy": the bot texts each person separately, settles a time and a place,
 // then tells the organizer.
 //
-//   time     each person gets a poll of times -> everyone's pick -> the middle one becomes the proposal
-//   confirm  anyone whose pick differs is asked "does 7:00 work?" (a no drops them from the plan)
-//   place    everyone gets a poll of 3 places that fit ALL their food restrictions -> most votes wins
-//   done     everyone is told, and so is the organizer
+//   time     each person gets a poll of times (tap every one that works) and a Find My request, so the
+//            place can be fair to everyone. The bot waits until they stop tapping; it never replies per tap.
+//   confirm  anyone not free at the time that fits the most people is asked "does 7:00 work?" (a no drops them)
+//   place    everyone gets a poll of the 3 places closest to everyone that fit ALL their food restrictions
+//            (tap every one you're up for) -> most votes wins
+//   done     everyone gets the details and a card, and so does the organizer
+//
+// Anyone who has answered while others haven't is told to hang tight, once per question.
 //
 // People answer whenever they like, so a plan can't live inside one running function. Its state is saved, and
 // `advance` is called from (a) a check every minute, (b) the person who asked, for the first few minutes, and
@@ -13,7 +17,9 @@ import { converseTool } from "../../src/llm/bedrock.js";
 import { haversineKm } from "../../src/pipeline/filter.js";
 import { listRestaurants } from "../../src/rag/store.js";
 import { type Origin, type Restrictions, constraintsFor, pickVaried, restrictionsFor, unionRestrictions } from "./dining.js";
-import { type PollRecord, type PollSpec, readVote, realPolls } from "./polls.js";
+import { peekLocation, requestLocation } from "./findmy.js";
+import { type MeetupCard, meetupJpeg } from "./meetup-card.js";
+import { type PollRecord, type PollSpec, readVotes, realPolls } from "./polls.js";
 import { getState, leaseOnce, putState, releaseLease } from "./store.js";
 import { TIME_ZONE } from "./day.js";
 
@@ -26,7 +32,13 @@ interface Ask {
   rec: PollRecord;
   sentAt: number;
   nudged?: boolean;
+  /** Set once the answer is final (the person stopped tapping, or it's a single-choice question). */
   answer?: string;
+  /** Everything they picked, for polls that allow several. */
+  picks?: string[];
+  /** What's ticked right now and since when: a multi-pick poll is final once this stops changing. */
+  sig?: string;
+  changedAt?: number;
 }
 interface Person {
   name: string;
@@ -37,31 +49,50 @@ interface Person {
   place?: Ask;
   /** Why they're no longer in the plan. */
   out?: string;
+  /** Where they are (Find My), when they shared it. */
+  loc?: Origin;
+  locAsked?: boolean;
+  /** Questions after which they've already been told to hang tight. */
+  held?: Record<string, boolean>;
 }
 export interface Plan {
   id: string;
   createdAt: number;
   meal: Meal;
   day: Day;
-  organizer: { name: string; phone: string; chatGuid: string };
+  organizer: { name: string; phone: string; chatGuid: string; loc?: Origin; locAsked?: boolean };
   people: Person[];
   /** Time options as "HH:MM", in order. */
   slots: string[];
   stage: Stage;
   proposed?: string;
   timeChoice?: string;
-  places?: { name: string; walkMin?: number }[];
+  places?: Place[];
   placeChoice?: string;
+  /** Don't wait past this for people's locations. */
+  locWaitUntil?: number;
+}
+export interface Place {
+  name: string;
+  lat?: number;
+  lng?: number;
+  /** The longest walk anyone in the group has to it. */
+  walkMin?: number;
 }
 
 export interface PlanDeps {
   now(): number;
   /** Text one person (opening the chat if needed). Returns the chat's GUID. */
   sendText(phone: string, text: string): Promise<string>;
-  polls: { send(chatGuid: string, spec: PollSpec): Promise<PollRecord>; read(rec: PollRecord): Promise<string | undefined> };
+  /** `read` returns every option currently ticked (empty if none). */
+  polls: { send(chatGuid: string, spec: PollSpec): Promise<PollRecord>; read(rec: PollRecord): Promise<string[]> };
+  /** Find My: a quiet look at where someone is, and the share-request card (never waits for the tap). */
+  location: { peek(phone: string): Promise<Origin | undefined>; request(chatGuid: string, phone: string): Promise<void> };
+  /** The "it's on" card, sent to one person as a picture. */
+  sendCard(phone: string, card: MeetupCard): Promise<void>;
   users(): Promise<{ firstName: string | null; lastName: string | null; phoneNumber: string }[]>;
-  /** Up to three places that work for all of these restrictions, nearest first when we know where the organizer is. */
-  places(restrictions: Restrictions, origin?: Origin): Promise<{ name: string; walkMin?: number }[]>;
+  /** Up to three places that work for all of these restrictions, the fairest walk for everyone first. */
+  places(restrictions: Restrictions, origins: Origin[]): Promise<Place[]>;
   organizerOrigin(chatGuid: string): Promise<Origin | undefined>;
   /** Which option (index) a typed reply means, or -1 if it isn't an answer. */
   interpret(question: string, options: string[], text: string): Promise<number>;
@@ -71,6 +102,13 @@ export interface PlanDeps {
 const minutes = (m: number) => m * 60_000;
 const NUDGE_MS = () => minutes(Number(process.env.PLAN_NUDGE_MIN ?? 10));
 const GIVE_UP_MS = () => minutes(Number(process.env.PLAN_GIVE_UP_MIN ?? 40));
+/** A multi-pick poll counts once nothing has changed for this long. */
+const SETTLE_MS = () => Number(process.env.PLAN_SETTLE_SEC ?? 15) * 1000;
+/** How long the place step waits for people who haven't shared their location. */
+const LOC_WAIT_MS = () => minutes(Number(process.env.PLAN_LOC_WAIT_MIN ?? 3));
+const WALK_KM_PER_MIN = 0.08;
+const walkMinutes = (a: Origin, b: { lat?: number; lng?: number }) =>
+  b.lat === undefined || b.lng === undefined ? undefined : Math.max(1, Math.round(haversineKm(a, { lat: b.lat, lng: b.lng }) / WALK_KM_PER_MIN));
 const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]!;
 const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
@@ -111,6 +149,22 @@ export function proposeTime(pickIdx: number[]): { index: number; unanimous: bool
   const sorted = [...pickIdx].sort((a, b) => a - b);
   const index = sorted[Math.floor((sorted.length - 1) / 2)]!;
   return { index, unanimous: sorted.every((i) => i === index) };
+}
+
+/**
+ * People tick every time that works for them. The best time is the one the most people can do; among equals, the
+ * one closest to the middle of everything picked. `everyone` says whether it works for all of them.
+ */
+export function chooseTime(slots: readonly string[], picksByPerson: readonly (readonly string[])[]): { index: number; everyone: boolean } {
+  const all = picksByPerson.flatMap((p) => p.map((v) => slots.indexOf(v))).filter((i) => i >= 0).sort((a, b) => a - b);
+  const middle = all.length > 0 ? all[Math.floor((all.length - 1) / 2)]! : 0;
+  let best = -1, bestCount = -1, bestGap = Infinity;
+  slots.forEach((slot, i) => {
+    const count = picksByPerson.filter((p) => p.includes(slot)).length;
+    const gap = Math.abs(i - middle);
+    if (count > bestCount || (count === bestCount && gap < bestGap)) (best = i), (bestCount = count), (bestGap = gap);
+  });
+  return { index: Math.max(best, 0), everyone: bestCount === picksByPerson.length };
 }
 
 /** Most votes wins; a tie goes to the option listed first (the nearest). */
@@ -165,14 +219,32 @@ async function ask(plan: Plan, p: Person, d: PlanDeps, text: string, spec: PollS
   return { rec: await d.polls.send(p.chatGuid, spec), sentAt: d.now() };
 }
 
+const picksOf = (a?: Ask): string[] => a?.picks ?? (a?.answer ? [a.answer] : []);
+
 async function readAnswers(plan: Plan, d: PlanDeps) {
   for (const p of live(plan)) {
     for (const key of ["time", "confirm", "place"] as const) {
       const a = p[key];
       if (!a || a.answer) continue;
       try {
-        const v = await d.polls.read(a.rec);
-        if (v !== undefined) a.answer = v;
+        const votes = await d.polls.read(a.rec);
+        if (votes.length === 0) {
+          a.sig = undefined;
+          continue;
+        }
+        if (!a.rec.multi) {
+          a.answer = votes[0]!;
+          continue;
+        }
+        // Several taps allowed: wait until they stop changing their mind, and say nothing in between.
+        const sig = votes.join("|");
+        if (sig !== a.sig) {
+          a.sig = sig;
+          a.changedAt = d.now();
+        } else if (d.now() - (a.changedAt ?? d.now()) >= SETTLE_MS()) {
+          a.picks = votes;
+          a.answer = votes[0]!;
+        }
       } catch (err) {
         console.warn(`  plan ${plan.id}: couldn't read ${p.name}'s ${key} poll: ${(err as Error).message}`);
       }
@@ -209,6 +281,29 @@ async function finish(plan: Plan) {
   await setActive((await activeIds()).filter((x) => x !== plan.id));
 }
 
+/** Someone has answered but others haven't: tell them once to hang tight, instead of leaving them wondering. */
+async function hold(plan: Plan, d: PlanDeps, key: AskKey) {
+  if (waiting(plan, key).length === 0) return;
+  for (const p of live(plan)) {
+    if (!p[key]?.answer || p.held?.[key]) continue;
+    (p.held ??= {})[key] = true;
+    await d.sendText(p.phone, pick(["got it, hang tight while i check with the others", "nice, hang tight while i check with everyone else", "ok got it. hang tight, checking with the others"]));
+  }
+}
+
+/** Ask for their location once, unless they're already sharing it. */
+async function askLocation(d: PlanDeps, who: { phone: string; chatGuid: string; loc?: Origin; locAsked?: boolean }) {
+  if (who.locAsked) return;
+  who.locAsked = true;
+  const have = await d.location.peek(who.phone);
+  if (have) {
+    who.loc = have;
+    return;
+  }
+  await d.sendText(who.phone, pick(["also, share your location with me so i can find a spot that's close for everyone", "one more thing: tap share on this so i can find a place that's fair for everybody"]));
+  await d.location.request(who.chatGuid, who.phone).catch((err) => console.warn(`  couldn't send a location request: ${(err as Error).message}`));
+}
+
 /** Returns true if the stage changed, so the caller runs the next stage straight away. */
 async function stageTime(plan: Plan, d: PlanDeps): Promise<boolean> {
   // "with you and Princy": the other invitees, not the organizer (who is named at the start).
@@ -221,31 +316,37 @@ async function stageTime(plan: Plan, d: PlanDeps): Promise<boolean> {
     const options = plan.slots.map((s) => ({ label: label(s), value: s }));
     p.time = await ask(
       plan, p, d,
-      `hey ${cap(p.name)}, ${cap(plan.organizer.name)} wants to do ${plan.meal} ${plan.day} with ${withWho(p)}. what time works for you? (if you've got allergies, text me so i can factor them in)`,
-      { kind: "restaurant", title: `what time works for ${plan.meal} ${plan.day}?`, options: [...options, { label: "can't make it", value: "no" }] },
+      `hey ${cap(p.name)}, ${cap(plan.organizer.name)} wants to do ${plan.meal} ${plan.day} with ${withWho(p)}. tap every time that works for you (if you've got allergies, text me so i can factor them in)`,
+      { kind: "restaurant", plan: true, multi: true, title: `what time works for ${plan.meal} ${plan.day}?`, options: [...options, { label: "can't make it", value: "no" }] },
     );
+    await askLocation(d, p);
   }
   await chase(plan, d, "time");
-  if (waiting(plan, "time").length > 0) return false;
+  if (waiting(plan, "time").length > 0) {
+    await hold(plan, d, "time");
+    return false;
+  }
 
-  for (const p of live(plan)) if (p.time?.answer === "no") p.out = "can't make it";
+  // Ticking "can't make it" along with times means the times; on its own it means they're out.
+  const timesOf = (p: Person) => picksOf(p.time).filter((v) => v !== "no");
+  for (const p of live(plan)) if (timesOf(p).length === 0) p.out = "can't make it";
   if (live(plan).length === 0) {
     await fail(plan, d, plan.people.some((p) => p.out === "didn't answer") ? "nobody answered in time" : `nobody can do ${plan.meal} ${plan.day}`);
     return false;
   }
-  const picks = live(plan).map((p) => plan.slots.indexOf(p.time!.answer!)).filter((i) => i >= 0);
-  const { index, unanimous } = proposeTime(picks.length > 0 ? picks : [0]);
+  const { index, everyone } = chooseTime(plan.slots, live(plan).map(timesOf));
   plan.proposed = plan.slots[index]!;
-  if (unanimous) {
+  if (everyone) {
     plan.timeChoice = plan.proposed;
     plan.stage = "place";
     return true;
   }
   plan.stage = "confirm";
   for (const p of live(plan)) {
-    if (plan.slots.indexOf(p.time!.answer!) === index) continue;
+    if (picksOf(p.time).includes(plan.proposed)) continue;
     p.confirm = await ask(plan, p, d, `${pick(["thanks!", "got it,", "ok,"])} to get everyone on the same time, would ${label(plan.proposed)} work for you instead?`, {
       kind: "restaurant",
+      plan: true,
       title: `does ${label(plan.proposed)} work?`,
       options: [{ label: "yeah", value: "yes" }, { label: "nah", value: "no" }],
     });
@@ -255,7 +356,10 @@ async function stageTime(plan: Plan, d: PlanDeps): Promise<boolean> {
 
 async function stageConfirm(plan: Plan, d: PlanDeps): Promise<boolean> {
   await chase(plan, d, "confirm");
-  if (waiting(plan, "confirm").length > 0) return false;
+  if (waiting(plan, "confirm").length > 0) {
+    await hold(plan, d, "confirm");
+    return false;
+  }
   for (const p of live(plan)) if (p.confirm?.answer === "no") p.out = `couldn't do ${label(plan.proposed!)}`;
   if (live(plan).length === 0) {
     await fail(plan, d, `nobody could do ${label(plan.proposed!)}`);
@@ -268,31 +372,54 @@ async function stageConfirm(plan: Plan, d: PlanDeps): Promise<boolean> {
 
 async function stagePlace(plan: Plan, d: PlanDeps): Promise<boolean> {
   if (!plan.places) {
+    // Where is everyone? People who haven't shared get a few minutes, then we go with what we have.
+    const everyone: { phone: string; loc?: Origin }[] = [plan.organizer, ...live(plan)];
+    for (const p of everyone) if (!p.loc) p.loc = await d.location.peek(p.phone);
+    plan.locWaitUntil ??= d.now() + LOC_WAIT_MS();
+    if (everyone.some((p) => !p.loc) && d.now() < plan.locWaitUntil) {
+      for (const p of live(plan)) {
+        if (p.held?.loc) continue;
+        (p.held ??= {}).loc = true;
+        await d.sendText(p.phone, `${pick(["cool", "nice", "perfect"])}, ${label(plan.timeChoice!)} it is. hang tight while i find a spot that's close to everyone`);
+      }
+      return false;
+    }
+    let origins = everyone.flatMap((p) => (p.loc ? [p.loc] : []));
+    if (origins.length === 0) origins = [await d.organizerOrigin(plan.organizer.chatGuid)].flatMap((o) => (o ? [o] : []));
     // The group's food restrictions are everyone's combined, including the organizer's.
     const all = await Promise.all([plan.organizer, ...live(plan)].map((p) => d.restrictionsFor(`any;-;${p.phone}`)));
-    const origin = await d.organizerOrigin(plan.organizer.chatGuid);
-    const places = await d.places(unionRestrictions(all), origin);
+    const places = await d.places(unionRestrictions(all), origins);
     if (places.length === 0) {
       await fail(plan, d, "nothing nearby fits everyone's food restrictions");
       return false;
     }
     plan.places = places;
     for (const p of live(plan)) {
-      p.place = await ask(plan, p, d, `${pick(["cool", "nice", "perfect"])}, ${label(plan.timeChoice!)} it is. where do you wanna eat?`, {
+      // Each person sees their own walk when we know where they are.
+      const options = places.map((x) => {
+        const walk = (p.loc && walkMinutes(p.loc, x)) || x.walkMin;
+        return { label: walk ? `${x.name} · ${walk} min` : x.name, value: x.name };
+      });
+      p.place = await ask(plan, p, d, `${p.held?.loc ? "ok, found" : `${pick(["cool", "nice", "perfect"])}, ${label(plan.timeChoice!)} it is. found`} the spots closest to everyone. tap every one you're up for`, {
         kind: "restaurant",
+        plan: true,
+        multi: true,
         title: "where to eat?",
-        options: places.map((x) => ({ label: x.walkMin ? `${x.name} · ${x.walkMin} min` : x.name, value: x.name })),
+        options,
       });
     }
     return false;
   }
   await chase(plan, d, "place");
-  if (waiting(plan, "place").length > 0) return false;
+  if (waiting(plan, "place").length > 0) {
+    await hold(plan, d, "place");
+    return false;
+  }
   if (live(plan).length === 0) {
     await fail(plan, d, "nobody picked a place in time");
     return false;
   }
-  plan.placeChoice = winner(plan.places.map((x) => x.name), live(plan).map((p) => p.place?.answer ?? "")) ?? plan.places[0]!.name;
+  plan.placeChoice = winner(plan.places.map((x) => x.name), live(plan).flatMap((p) => picksOf(p.place))) ?? plan.places[0]!.name;
   plan.stage = "done";
   await announce(plan, d);
   return true;
@@ -309,8 +436,28 @@ async function announce(plan: Plan, d: PlanDeps) {
   const lines = [`${plan.meal}'s set: ${plan.placeChoice} at ${when}. ${names(goers)} ${goers.length === 1 ? "is" : "are"} in`];
   if (dropped.length > 0) lines.push(dropped.map((p) => `${cap(p.name)} ${p.out}`).join(", "));
   await d.sendText(plan.organizer.phone, lines.join("\n\n"));
+
+  // The card with the place, time, and who's coming (and how far each person walks).
+  const place = plan.places?.find((x) => x.name === plan.placeChoice);
+  const going = [plan.organizer, ...goers];
+  const walks = going.map((p) => (place && p.loc ? walkMinutes(p.loc, place) : undefined));
+  const farthest = Math.max(0, ...walks.map((w) => w ?? 0));
+  const card: MeetupCard = {
+    meal: plan.meal,
+    place: plan.placeChoice!,
+    time: label(plan.timeChoice!),
+    date: dateLabel(plan.day, d.now()),
+    people: going.map((p, i) => ({ name: p.name, ...(walks[i] !== undefined && { walkMin: walks[i]! }) })),
+    ...(farthest > 0 && { note: `closest spot that works for everyone · farthest walk ${farthest} min` }),
+  };
+  for (const phone of going.map((p) => p.phone)) {
+    await d.sendCard(phone, card).catch((err) => console.warn(`  plan ${plan.id}: couldn't send the card to ${phone}: ${(err as Error).message}`));
+  }
   await finish(plan);
 }
+
+const dateLabel = (day: Day, nowMs: number) =>
+  new Date(nowMs + (day === "tomorrow" ? 86_400_000 : 0)).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: TIME_ZONE });
 
 /** Move a plan as far forward as the answers allow. Safe to call repeatedly. */
 export async function advance(plan: Plan, d: PlanDeps): Promise<void> {
@@ -372,6 +519,7 @@ export async function startPlan(d: PlanDeps, who: { phone: string; chatGuid: str
     organizer: { name: (me?.firstName ?? "your friend").toLowerCase(), phone: who.phone, chatGuid: who.chatGuid },
     stage: "time",
   };
+  await askLocation(d, plan.organizer);
   await savePlan(plan);
   await setActive([...(await activeIds()), plan.id]);
   for (const p of people) await putState(pointerKey(p.phone), plan.id, PLAN_TTL);
@@ -428,12 +576,10 @@ export async function handleReply(d: PlanDeps, phone: string, text: string): Pro
         const idx = await d.interpret(pending.ask.rec.title, options.map((o) => o.label), text);
         if (idx < 0 || idx >= options.length) return false;
         pending.ask.answer = options[idx]!.value;
+        pending.ask.picks = [options[idx]!.value];
         console.log(`  plan ${plan.id}: ${person.name} answered ${pending.key} by text: ${pending.ask.answer}`);
+        // advance tells them to hang tight if the others haven't answered yet.
         await advance(plan, d);
-        // Nothing new for them (still waiting on the others): say so, so they aren't left wondering.
-        if (!isOver(plan) && !pendingAsk(plan, person)) {
-          await d.sendText(phone, pick(["got it, i'll let you know once everyone's answered", "ok noted, will update you when it's set", "cool, got it. waiting on the others"]));
-        }
         return true;
       },
       8000,
@@ -443,18 +589,33 @@ export async function handleReply(d: PlanDeps, phone: string, text: string): Pro
 
 // ---------- the real dependencies ----------
 
-export function realPlanDeps(app: any, sendDm: (app: any, phone: string, text: string) => Promise<string>): PlanDeps {
+export function realPlanDeps(
+  app: any,
+  sendDm: (app: any, phone: string, text: string) => Promise<string>,
+  sendImage?: (app: any, phone: string, image: Buffer) => Promise<void>,
+): PlanDeps {
   return {
     now: () => Date.now(),
     sendText: (phone, text) => sendDm(app, phone, text),
-    polls: { send: realPolls.send, read: readVote },
+    polls: { send: realPolls.send, read: readVotes },
+    location: { peek: peekLocation, request: requestLocation },
+    sendCard: async (phone, card) => void (sendImage && (await sendImage(app, phone, await meetupJpeg(card)))),
     users: async () => (await import("./invite.js")).listUsers(),
-    places: async (restrictions, origin) => {
+    places: async (restrictions, origins) => {
       const rows = await listRestaurants(constraintsFor(restrictions), ["meal"]);
+      // Fairest first: the shortest worst-case walk, then the shortest total. With nobody's location, the catalog's order.
       const ranked = rows
-        .map((r, i) => ({ r, km: origin ? haversineKm(origin, r) : i * 0.001 }))
-        .sort((a, b) => a.km - b.km);
-      return pickVaried(ranked, 3).map(({ r, km }) => ({ name: r.restaurantName, ...(origin && { walkMin: Math.max(1, Math.round(km / 0.08)) }) }));
+        .map((r, i) => {
+          const km = origins.map((o) => haversineKm(o, r));
+          return { r, km: origins.length ? Math.max(...km) : i * 0.001, total: km.reduce((a, b) => a + b, 0) };
+        })
+        .sort((a, b) => a.km - b.km || a.total - b.total);
+      return pickVaried(ranked, 3).map(({ r, km }) => ({
+        name: r.restaurantName,
+        lat: r.lat,
+        lng: r.lng,
+        ...(origins.length > 0 && { walkMin: Math.max(1, Math.round(km / WALK_KM_PER_MIN)) }),
+      }));
     },
     organizerOrigin: async (chatGuid) => (await getState<Origin>(`loc#${chatGuid}`)) ?? undefined,
     restrictionsFor,

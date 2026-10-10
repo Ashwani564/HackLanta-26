@@ -16,7 +16,7 @@ import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./inv
 import { claimOnce, getState, putState } from "./store.js";
 import { warmDb } from "../../src/rag/store.js";
 import { isGroupChat, shouldRespond } from "./addressing.js";
-import { sendDm } from "./dm.js";
+import { sendDm, sendDmImage } from "./dm.js";
 import { type PlanDeps, handleReply as handlePlanReply, realPlanDeps, startPlan, tickPlans, watchPlan } from "./plans.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -29,7 +29,7 @@ const CHAIN_MS = Number(process.env.POLL_CHAIN_MS ?? 270_000);
 export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi; plans?: PlanDeps } = {}) {
   const locate = deps.locate ?? realLocate;
   const pollApi = deps.polls ?? realPolls;
-  const planDeps = deps.plans ?? realPlanDeps(app, sendDm);
+  const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage);
   // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
   return { handle, invite, tick: () => tickPlans(planDeps) };
 
@@ -309,6 +309,10 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         const value = rec?.options.find((o) => o.label === label)?.value;
         if (!rec || value === undefined) {
           console.log("  vote isn't on a poll we're waiting on; ignoring");
+          return;
+        }
+        if (rec.plan) {
+          console.log("  vote is on a meal-plan poll; the plan reads it, no reply");
           return;
         }
         if (!(await claimOnce(`voted#${rec.guid}`))) return;

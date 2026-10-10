@@ -25,10 +25,15 @@ You can type instead of tapping and it follows along. Other things it does:
 | A friend's contact card | Registers them as a Photon user and texts them an intro. They can reply STOP. |
 | `/reset` | Clears the chat's memory, restrictions and saved location. |
 
-**Planning a meal with friends:** say "schedule dinner today with ashwani and princy" and the bot texts each of them separately
-(they must be registered users). Everyone gets a poll of times; if the picks differ it proposes the middle one and asks the others
-"does 6:30 work?"; then everyone polls on three places that fit **everyone's** allergies and diets, most votes wins. It tells
-everyone once it's locked in and messages you last. People can type instead of tapping ("7 works", "can't tonight"). Quiet people
+**Planning a meal with friends:** say "schedule dinner today with ashwani and princy" (or "grab dinner with ashwani and princy, figure
+out the time and place") and the bot texts each of them separately (they must be registered users). Everyone gets a poll of times where
+they **tap every time that works**; the bot says nothing per tap and counts the answer once they stop changing it (`PLAN_SETTLE_SEC`,
+15 s). It also asks each person to share their location (Find My) so the place can be fair to everyone. The time the most people ticked
+wins; anyone who can't do it is asked "does 7:00 work?". Anyone who has answered while others haven't hears "hang tight while i check
+with the others". Then everyone polls (again multi-pick) on the three places that fit **everyone's** allergies and diets and are
+closest to where everyone is (shortest worst-case walk; each person sees their own walk time); people who haven't shared get
+`PLAN_LOC_WAIT_MIN` (3 min) before it goes with who it has. Most ticks wins, and everyone gets a card (`src/meetup-card.ts`) with the
+place, time, date, who's coming and each person's walk. People can type instead of tapping ("7 works", "can't tonight"). Quiet people
 get one nudge after 10 minutes and are dropped after 40 (`PLAN_NUDGE_MIN`, `PLAN_GIVE_UP_MIN`). Plans are saved, and an EventBridge
 check every minute (or a 30 s timer when running locally) reads the answers and moves them forward, so they survive restarts.
 Code in `src/plans.ts`; try it without texting anyone: `npx tsx --env-file=.env chat-sim.mts plan`.

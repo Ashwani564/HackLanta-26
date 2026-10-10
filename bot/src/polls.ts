@@ -10,6 +10,10 @@ export interface PollSpec {
   /** Sent as a text right before the poll (e.g. naming the options), so the poll matches what was just said. */
   intro?: string;
   title: string;
+  /** Owned by a meal plan: its engine reads the votes, so the chat handler must not answer them. */
+  plan?: boolean;
+  /** Several taps allowed; the plan waits for the person to stop tapping before it counts them. */
+  multi?: boolean;
   /** label is what the person sees; value is what the flow gets back. */
   options: { label: string; value: string }[];
 }
@@ -70,6 +74,13 @@ export async function readVote(rec: PollRecord): Promise<string | undefined> {
     if (value !== undefined) return value;
   }
   return undefined;
+}
+
+/** Every option currently ticked (iMessage polls allow several), in poll order. Empty if nothing is. */
+export async function readVotes(rec: PollRecord): Promise<string[]> {
+  const poll = await im.polls.get(rec.guid);
+  const ticked = new Set(poll.votes.map((v) => rec.optionIds[v.optionIdentifier]).filter((v): v is string => v !== undefined));
+  return rec.options.map((o) => o.value).filter((v) => ticked.has(v));
 }
 
 export const realPolls: PollApi = { send, wait };

@@ -13,6 +13,7 @@ sharing) -> comments on where you are -> one text naming the 3 nearest places ->
 choose -> quick reaction -> plain-text "want directions?" (Apple Maps link only after a yes). Also: food photo calorie reads, voice notes
 both ways, a "Today's Pie" calorie card, contact-card invites, group chats where it only replies when addressed, and
 "schedule dinner today with X and Y" (texts each person, settles time and place, reports back; `bot/src/plans.ts`).
+Plan polls are multi-pick (counted once they stop tapping, no reply per tap), it asks for Find My locations to pick the fairest place, tells early answerers to hang tight, and ends with a card (`bot/src/meetup-card.ts`).
 Full behavior and setup: `bot/README.md`. Code map: `graphify-out/GRAPH_REPORT.md`, then `graphify query "<symbol>"`.
 
 ### Where things live
@@ -52,6 +53,7 @@ Run `npx tsc` in both `bot/` and the repo root before committing (the root build
 - Allergens/diets are enforced in code only; the model never says anything is "safe" (a guard rewrites it). Restrictions accumulate per chat and are never forgotten.
 
 ### Things that bit us (so they don't again)
+- The bot role needs `dynamodb:DeleteItem` (plans release their lock by deleting a row); it was missing once and plan_meal failed with AccessDenied. Plan polls carry `plan: true` so the chat handler never answers their votes.
 - Poll votes are read by checking `polls.get` every 2 s (`src/polls.ts`); we haven't confirmed Photon's webhook forwards vote events. Only one vote per person per poll.
 - Photon retries slow webhooks, so the Function URL answers fast and an async self-invocation does the work; messages are deduped on id, async retries are off.
 - On forced/likely-fumbled first steps the code forces the tool (`wantsFood`, `wantsPlan`, `namesRestaurant` in `src/llm.ts`); the restaurant is read from the user's words, not from what the model passes.
@@ -63,7 +65,7 @@ Run `npx tsc` in both `bot/` and the repo root before committing (the root build
 - Shell reminder: run commands from the repo root with an absolute `cd`; `npx tsc` outside a project installs a wrong placeholder package.
 
 ### Not verified / not done
-- `plan_meal` and the voice notes have **not been tried on real phones** (the poll flow, location flow, photos and Polly/Transcribe on Lambda were).
+- The multi-pick plan polls, the location ask and the final card have only been tested in unit tests and `chat-sim plan`; `plan_meal` and the voice notes have **not been tried on real phones** (the poll flow, location flow, photos and Polly/Transcribe on Lambda were).
 - Group chats need the Business plan (ask Photon). The group poll logic still takes the first vote as the answer, and restrictions are per chat, not per person.
 - Bot has no name yet (set `BOT_NAMES` once chosen). "Today's Pie" card links need `PUBLIC_URL` (a hosted server); SAM 2 photo outlines need a GPU server (`SAM_URL`, Vultr was the idea).
 - Demo prep: register judges' numbers as users, warm the database before presenting, record a backup video.

@@ -101,3 +101,21 @@ export async function locate(
     await putState(askedKey(chatGuid), null, 1);
   }
 }
+
+/** One quiet look at someone's Find My share: their coordinates, or undefined if they aren't sharing (yet). Never asks. */
+export async function peekLocation(address: string): Promise<{ lat: number; lng: number } | undefined> {
+  try {
+    const now = await read(address);
+    return "fix" in now ? { lat: now.fix.latitude, lng: now.fix.longitude } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Send the Find My request card (once per person for a while) without waiting for the tap. */
+export async function requestLocation(chatGuid: string, address: string): Promise<void> {
+  if (await getState<number>(askedKey(chatGuid))) return;
+  await putState(askedKey(chatGuid), Date.now(), 600);
+  const receipt = await im.locations.request(chatGuid, address);
+  console.log(`  find my request (plan) -> ${receipt.status}${receipt.reason ? ` (${receipt.reason})` : ""}`);
+}
