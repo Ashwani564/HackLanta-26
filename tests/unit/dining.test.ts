@@ -3,7 +3,7 @@ import test from "node:test";
 import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/explain.js";
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
-import { wantsFood } from "../../bot/src/llm.js";
+import { replyText, wantsFood } from "../../bot/src/llm.js";
 import { composeDishMessage, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
@@ -153,4 +153,14 @@ test("the restaurant is read from the message, not guessed", () => {
   assert.equal(restaurantNamed("mangos"), "Mango's");
   assert.equal(restaurantNamed("what's good at moe's?"), "Moe's");
   assert.equal(restaurantNamed("im hungry"), undefined);
+});
+
+test("a reply the model repeats is sent once, and chunks never run together", () => {
+  const line = "nah can't send vm rn, just text you back lmao";
+  assert.equal(replyText([line, line]), line); // two identical chunks (the bug seen in the logs)
+  assert.equal(replyText([`${line}${line}`]), line); // glued by an old join: "...lmaonah can't..." style
+  assert.equal(replyText([line, `  ${line.toUpperCase()}  `]), line); // case/spacing differences
+  assert.equal(replyText(["first thing", "second thing"]), "first thing\n\nsecond thing"); // different chunks stay separate texts
+  assert.equal(replyText(["", "  "]), "");
+  assert.equal(replyText(["ok ok"]), "ok ok"); // short repeated words are left alone
 });

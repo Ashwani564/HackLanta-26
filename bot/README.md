@@ -21,7 +21,7 @@ You can type instead of tapping and it follows along. Other things it does:
 | A food photo | A quick casual read: total calories and protein and the biggest chunk. With a SAM 2 server (`SAM_URL`) it sends the photo back outlined and labeled instead. |
 | "i had a burrito" / "how's my day" | Logs meals and shows the "Today's Pie" card, edited in place. |
 | "make a poll for dinner" | A native iMessage poll. |
-| A voice note, or "send me a voice note" | Transcribed with Amazon Transcribe, answered with Amazon Polly (Mac host only for now, see limits). |
+| A voice note, or "send me a voice note" | Transcribed with Amazon Transcribe, answered with Amazon Polly as a voice message (needs ffmpeg, see limits). |
 | A friend's contact card | Registers them as a Photon user and texts them an intro. They can reply STOP. |
 | `/reset` | Clears the chat's memory, restrictions and saved location. |
 
@@ -102,7 +102,7 @@ bot/
 
 ## Known limits
 
-- **Voice notes need macOS** (`afconvert`); on Lambda the bot asks people to type. Adding an ffmpeg layer fixes it.
+- **Voice notes on Lambda need an ffmpeg layer** (`scripts/build-ffmpeg-layer.sh`, then `npm run deploy`). Without it the bot asks people to type. Check it with `aws lambda invoke --function-name dining-bot --payload '{"kind":"selftest"}' --cli-binary-format raw-in-base64-out out.json`. Locally, ffmpeg from your PATH is used (macOS `afconvert` is the fallback).
 - **Polls**: votes are read by checking the poll's state every 2 s, because it isn't known that Photon's webhook forwards vote events. If you type an answer instead, the typed path takes over.
 - **Group chats** need Photon's Business plan (shared lines can't create or see groups).
 - **Coverage** is the 9 restaurants around GSU. Far from campus, the bot says so instead of guessing.

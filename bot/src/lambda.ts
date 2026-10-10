@@ -38,6 +38,7 @@ const getBot = () =>
 
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
+  if (event?.kind === "selftest") return selfTest();
 
   // Function URL request from Photon.
   if (event?.requestContext?.http?.method !== "POST") return { statusCode: 200, body: "dining-agent webhook" };
@@ -98,3 +99,13 @@ async function processDelivery({ body, headers }: Delivery) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** `aws lambda invoke --payload '{"kind":"selftest"}'`: proves ffmpeg, Polly and Transcribe work inside Lambda. */
+async function selfTest() {
+  const { canConvertAudio, speak, toWav, transcribe } = await import("./voice.js");
+  if (!canConvertAudio()) return { ok: false, error: "ffmpeg not found (is the layer attached?)" };
+  const started = Date.now();
+  const { audio, duration } = await speak("Try the beef rice at Queen Tea. It's about six hundred fifty calories.");
+  const transcript = await transcribe(await toWav(audio));
+  return { ok: !!transcript, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
+}

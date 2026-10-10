@@ -31,9 +31,14 @@ if [[ "${1:-}" != "--code" ]]; then
     --query 'Stacks[0].Outputs' --output json)
   CLUSTER=$(node -e 'const o=JSON.parse(process.argv[1]);console.log(o.find(x=>x.OutputKey==="ClusterArn").OutputValue)' "$DB")
   SECRET=$(node -e 'const o=JSON.parse(process.argv[1]);console.log(o.find(x=>x.OutputKey==="SecretArn").OutputValue)' "$DB")
+  # Newest ffmpeg layer, if one was published (scripts/build-ffmpeg-layer.sh). Without it voice notes are off.
+  FFMPEG_LAYER=$(aws lambda list-layer-versions --region "$REGION" --layer-name dining-bot-ffmpeg \
+    --query 'LayerVersions[0].LayerVersionArn' --output text 2>/dev/null || true)
+  [[ "$FFMPEG_LAYER" == "None" ]] && FFMPEG_LAYER=""
+  [[ -z "$FFMPEG_LAYER" ]] && echo "    (no ffmpeg layer yet: voice notes stay off. Run scripts/build-ffmpeg-layer.sh)"
   aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file ../infra/bot-lambda.yaml \
     --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
-    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET"
+    --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER"
 fi
 
 echo "==> uploading code"

@@ -1,6 +1,7 @@
 // Voice notes. ElevenLabs (Scribe STT + TTS) when ELEVENLABS_API_KEY is set; otherwise AWS:
 // Amazon Polly for speech and Amazon Transcribe (streaming) for transcripts.
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,9 +28,23 @@ const POLLY_VOICE = (process.env.POLLY_VOICE_ID ?? "Joanna") as VoiceId;
 const POLLY_ENGINE = (process.env.POLLY_ENGINE ?? "standard") as "standard" | "neural" | "generative";
 const transcribeClient = new TranscribeStreamingClient({ region: REGION });
 
-/** Audio conversion uses macOS afconvert, so voice notes only work on a Mac host for now
- *  (Lambda would need an ffmpeg layer). */
-export const canConvertAudio = () => process.platform === "darwin";
+// Audio conversion uses ffmpeg: from the Lambda layer (/opt/bin/ffmpeg), FFMPEG_PATH, or the PATH. macOS's
+// afconvert is only a fallback for a Mac without ffmpeg. Using ffmpeg everywhere means what we test locally
+// is what runs on Lambda.
+const FFMPEG = process.env.FFMPEG_PATH ?? (existsSync("/opt/bin/ffmpeg") ? "/opt/bin/ffmpeg" : "ffmpeg");
+let ffmpegOk: boolean | undefined;
+const hasFfmpeg = () => {
+  if (ffmpegOk === undefined) {
+    try {
+      execFileSync(FFMPEG, ["-version"], { stdio: "ignore" });
+      ffmpegOk = true;
+    } catch {
+      ffmpegOk = false;
+    }
+  }
+  return ffmpegOk;
+};
+export const canConvertAudio = () => hasFfmpeg() || process.platform === "darwin";
 
 /** Text -> AAC voice note (.m4a). ElevenLabs if configured, else Amazon Polly. */
 export async function speak(text: string): Promise<{ audio: Buffer; duration: number }> {
@@ -48,13 +63,14 @@ export async function speak(text: string): Promise<{ audio: Buffer; duration: nu
     const res = await polly.send(new SynthesizeSpeechCommand({ Text: text, VoiceId: POLLY_VOICE, Engine: POLLY_ENGINE, OutputFormat: "mp3" }));
     mp3 = Buffer.from(await res.AudioStream!.transformToByteArray());
   }
-  const audio = await convert(mp3, "in.mp3", ["-f", "m4af", "-d", "aac"], "out.m4a");
+  // AAC in an .m4a is what iMessage plays as a voice message.
+  const audio = await convert(mp3, "in.mp3", { ff: ["-c:a", "aac", "-b:a", "64k", "-ac", "1"], af: ["-f", "m4af", "-d", "aac"] }, "out.m4a");
   return { audio, duration: await probeDuration(mp3, "in.mp3", text) };
 }
 
 /** Any audio Apple can decode (iMessage voice notes are CAF/Opus) -> 16 kHz mono 16-bit WAV. */
 export async function toWav(input: Buffer): Promise<Buffer> {
-  return convert(input, "in.caf", ["-f", "WAVE", "-d", `LEI16@${STT_RATE}`, "-c", "1"], "out.wav");
+  return convert(input, "in.caf", { ff: ["-ar", String(STT_RATE), "-ac", "1", "-c:a", "pcm_s16le", "-f", "wav"], af: ["-f", "WAVE", "-d", `LEI16@${STT_RATE}`, "-c", "1"] }, "out.wav");
 }
 
 /** 16 kHz mono WAV (from toWav) -> transcript. ElevenLabs Scribe if configured, else Amazon Transcribe. */
@@ -98,16 +114,23 @@ function pcmFromWav(wav: Buffer): Buffer {
   return wav.subarray(44);
 }
 
-// Seconds of audio in a file afconvert can read, via macOS afinfo. MP3 carries no simple
-// byte->duration relationship like raw PCM, so we probe it; estimate from text if afinfo fails.
+// Seconds of audio in a file, read from ffmpeg (or macOS afinfo). MP3 has no simple byte->duration relationship,
+// so probe it; estimate from the text if neither tool can.
 async function probeDuration(input: Buffer, name: string, text: string): Promise<number> {
   const dir = await mkdtemp(join(tmpdir(), "voice-"));
   try {
     const path = join(dir, name);
     await writeFile(path, input);
-    const { stdout } = await run("afinfo", [path]);
-    const m = stdout.match(/estimated duration:\s*([\d.]+)/);
-    if (m) return parseFloat(m[1]!);
+    if (hasFfmpeg()) {
+      // `ffmpeg -i file` with no output exits non-zero but prints "Duration: 00:00:03.15" on stderr.
+      const err = await run(FFMPEG, ["-hide_banner", "-i", path]).then(() => "", (e) => String(e?.stderr ?? ""));
+      const m = err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]!);
+    } else {
+      const { stdout } = await run("afinfo", [path]);
+      const m = stdout.match(/estimated duration:\s*([\d.]+)/);
+      if (m) return parseFloat(m[1]!);
+    }
   } catch {
     // fall through to the estimate
   } finally {
@@ -117,12 +140,14 @@ async function probeDuration(input: Buffer, name: string, text: string): Promise
   return Math.max(1, text.trim().split(/\s+/).length / 2.5);
 }
 
-async function convert(input: Buffer, inName: string, args: string[], outName: string) {
+async function convert(input: Buffer, inName: string, args: { ff: string[]; af: string[] }, outName: string) {
   const dir = await mkdtemp(join(tmpdir(), "voice-"));
   try {
-    await writeFile(join(dir, inName), input);
-    await run("afconvert", [...args, join(dir, inName), join(dir, outName)]);
-    return await readFile(join(dir, outName));
+    const inPath = join(dir, inName), outPath = join(dir, outName);
+    await writeFile(inPath, input);
+    if (hasFfmpeg()) await run(FFMPEG, ["-y", "-loglevel", "error", "-i", inPath, ...args.ff, outPath]);
+    else await run("afconvert", [...args.af, inPath, outPath]);
+    return await readFile(outPath);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

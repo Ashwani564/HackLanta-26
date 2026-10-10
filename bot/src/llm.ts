@@ -189,6 +189,29 @@ const WANTS_FOOD =
   /\b(hungry|starving|famished|hangry|something to eat|place to eat|places to eat|where (should|can|do|to) (i|we|you) (eat|go)|where to eat|what (should|do) (i|we) eat|(wanna|want to|gotta|need to|let'?s|lets) eat|need (some )?food|need (a |some )?(lunch|dinner|breakfast)|grab (some )?(food|lunch|dinner|breakfast|something)|(lunch|dinner|breakfast) (spot|place|ideas?))\b/i;
 export const wantsFood = (text: string) => WANTS_FOOD.test(text);
 
+/**
+ * Join the text chunks of a reply. The model sometimes returns the same sentence as two chunks (or twice in
+ * one), which used to be glued together as "…lmaonah can't…". Drop exact repeats; keep distinct chunks as
+ * separate paragraphs (separate texts).
+ */
+export function replyText(chunks: readonly string[]): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const raw of chunks) {
+    const t = raw.trim();
+    const key = t.toLowerCase().replace(/\s+/g, " ");
+    if (!t || seen.has(key)) continue;
+    seen.add(key);
+    parts.push(t);
+  }
+  const joined = parts.join("\n\n");
+  // The same text written twice back to back inside one chunk ("A A" or "AA").
+  const flat = joined.replace(/\s+/g, " ");
+  const half = Math.floor(flat.length / 2);
+  if (flat.length > 8 && flat.slice(0, half).trim() === flat.slice(flat.length - half).trim()) return flat.slice(0, half).trim();
+  return joined;
+}
+
 /** The model returns exactly this when a tool already sent everything the person needs to see. */
 export const NO_REPLY = "NO_REPLY";
 
@@ -258,7 +281,7 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
 
     const calls = (message.content ?? []).filter((b) => b.toolUse);
     if (res.stopReason !== "tool_use" || calls.length === 0 || round === MAX_TOOL_ROUNDS) {
-      const text = (message.content ?? []).map((b) => b.text ?? "").join("").trim();
+      const text = replyText((message.content ?? []).map((b) => b.text ?? ""));
       const usedTools = turn.some((m) => m.content?.some((b) => b.toolResult));
       // The marker only means "nothing to add". If the model wrote real text and also the marker, keep just the text.
       const clean = text.replace(/NO_REPLY/g, "").trim();

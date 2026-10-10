@@ -12,6 +12,10 @@ Parameters:
   DbSecretArn:
     Type: String
     Description: SecretArn output of the dining-vector-db stack.
+  FfmpegLayerArn:
+    Type: String
+    Default: ""
+    Description: Layer from bot/scripts/build-ffmpeg-layer.sh. Empty means voice notes are off.
   PhotonSecretName:
     Type: String
     Default: photon/project-secret
@@ -21,6 +25,9 @@ Parameters:
   EmbeddingModelId:
     Type: String
     Default: amazon.titan-embed-text-v2:0
+
+Conditions:
+  HasFfmpeg: !Not [!Equals [!Ref FfmpegLayerArn, ""]]
 
 Resources:
   StateTable:
@@ -85,6 +92,7 @@ Resources:
       Runtime: nodejs22.x
       Architectures: [arm64]
       Handler: index.handler
+      Layers: !If [HasFfmpeg, [!Ref FfmpegLayerArn], !Ref "AWS::NoValue"]
       MemorySize: 1536
       # Long on purpose: after sending a poll the function waits (cheaply) for the tap, up to ~4 minutes.
       Timeout: 300
