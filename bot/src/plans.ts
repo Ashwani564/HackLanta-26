@@ -754,14 +754,23 @@ export async function startPlan(d: PlanDeps, who: { phone: string; chatGuid: str
   return { started: true, planId: plan.id, texting: people.map((p) => cap(p.name)), not_found: notFound, ambiguous, times: slots.map(label) };
 }
 
-/** The check that runs every minute: read answers, nudge, and move every active plan forward. */
-export async function tickPlans(d: PlanDeps) {
-  for (const id of await activeIds()) {
-    await withLease(id, async () => {
-      const plan = await getPlan(id);
-      if (!plan) return void (await setActive((await activeIds()).filter((x) => x !== id)));
-      await advance(plan, d);
-    }).catch((err) => console.warn(`  plan ${id} tick failed: ${(err as Error).message}`));
+/**
+ * The check that runs every minute: read answers, nudge, and move every active plan forward. Photon doesn't forward poll
+ * taps, so this is what notices them: with `spanMs` it keeps looking every few seconds for most of the minute instead of once.
+ */
+export async function tickPlans(d: PlanDeps, spanMs = 0) {
+  const until = Date.now() + spanMs;
+  for (;;) {
+    const ids = await activeIds();
+    for (const id of ids) {
+      await withLease(id, async () => {
+        const plan = await getPlan(id);
+        if (!plan) return void (await setActive((await activeIds()).filter((x) => x !== id)));
+        await advance(plan, d);
+      }).catch((err) => console.warn(`  plan ${id} tick failed: ${(err as Error).message}`));
+    }
+    if (ids.length === 0 || Date.now() + 4000 >= until) return;
+    await new Promise((r) => setTimeout(r, 4000));
   }
 }
 
