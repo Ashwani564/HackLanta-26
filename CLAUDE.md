@@ -2,6 +2,73 @@
 
 Hackathon project: an iMessage food-recommendation agent. Users (alone or in a group chat) text what they want; the bot recommends specific dishes at nearby restaurants that fit everyone's dietary restrictions, allergies, goals, budget, and walking distance.
 
+## Current state (read this first)
+
+**Where this file and reality differ, this section wins.** The sections below are the original design. What was actually built:
+one Lambda (not SQS + worker Lambda), Claude Haiku 4.5 on Bedrock, Photon via a webhook, polls for every choice. Last updated 2026-10-10 (HackLanta '26).
+
+### What it is
+An iMessage bot that texts like a friend who knows the food around GSU. "I'm hungry" -> it checks Find My (asks only if you aren't
+sharing) -> comments on where you are -> one text naming the 3 nearest places -> poll of those 3 -> two dish picks with prices -> poll to
+choose -> quick reaction -> plain-text "want directions?" (Apple Maps link only after a yes). Also: food photo calorie reads, voice notes
+both ways, a "Today's Pie" calorie card, contact-card invites, group chats where it only replies when addressed, and
+"schedule dinner today with X and Y" (texts each person, settles time and place, reports back; `bot/src/plans.ts`).
+Full behavior and setup: `bot/README.md`. Code map: `graphify-out/GRAPH_REPORT.md`, then `graphify query "<symbol>"`.
+
+### Where things live
+- **Branches:** `main` has the AWS bot (PR #1 merged). **Open PRs, not merged yet:** #2 (don't resend dish picks) and #4 (meal planning).
+  `ashar/plan-meals` contains everything including both; work from it until they merge. The user merges PRs themselves (merging is blocked for the assistant).
+- **Code:** `bot/` is the bot (Lambda entry `src/lambda.ts`, local entry `src/index.ts`, shared logic `src/handler.ts`). `src/`, `tests/`, `scripts/`, `infra/vector-db.yaml`
+  are the retrieval backend (allergen filters, pgvector) that the bot imports; `infra/bot-lambda.yaml` is the bot's stack. `data/` is the GSU menu catalog.
+- **AWS (us-east-2, account 446205069613):** stacks `dining-vector-db` (Aurora pgvector, pauses when idle: first query after a pause takes ~15-20 s) and `dining-bot`
+  (Lambda `dining-bot`, DynamoDB state table, Function URL, EventBridge rule `rate(1 minute)`). Layer `dining-bot-ffmpeg` (ffmpeg for voice notes). Needs `aws login` (sessions expire).
+- **Secrets:** AWS Secrets Manager `photon/project-secret` = `{projectId, projectSecret, webhookSecret}`. Nothing secret is in git. `bot/.env` (gitignored) only holds AWS settings; copy `bot/.env.example`.
+  The optional ElevenLabs key is in the macOS Keychain (item `hacklanta-elevenlabs`); the bot uses Amazon Polly/Transcribe by default. Gemini is no longer used.
+- **Photon:** project "HackLanta", **Pro plan, but still the shared number pool**: Free and Pro both use shared numbers, so **group chats never reach the bot** (needs the Business plan, a dedicated line).
+  People can only text the bot if registered as users (dashboard, or share a contact card with the bot); each user is routed to their own bot number. The webhook points at the Lambda Function URL.
+  The Photon CLI is not logged in; the Spectrum API works with the project credentials (`https://spectrum.photon.codes/projects/<id>/...`, basic auth).
+
+### Commands
+```bash
+cd bot && npm install                      # then: cp .env.example .env
+npm run deploy                              # stack + code (needs aws login); `npm run deploy -- --code` for code only
+scripts/build-ffmpeg-layer.sh               # once, if the layer is missing (voice notes)
+npm run dev                                 # local streaming bot; don't run it while the Lambda is live (both would answer)
+npx tsx --env-file=.env chat-sim.mts <scenario>   # talk to the bot with no phone: polls, typed, plan, group, price, allergy, far, never, chat, ...
+cd .. && npm test                           # 75 unit tests; `npm run eval` = live allergy eval (26 cases, must say 0 allergen leaks)
+aws logs tail /aws/lambda/dining-bot --region us-east-2 --since 15m --format short
+aws lambda invoke --region us-east-2 --function-name dining-bot --payload '{"kind":"selftest"}' --cli-binary-format raw-in-base64-out out.json   # ffmpeg + Polly + Transcribe check
+graphify update .                           # after code changes; then `git add -f graphify-out/graph.json graphify-out/GRAPH_REPORT.md`
+```
+Run `npx tsc` in both `bot/` and the repo root before committing (the root build also checks the bot files its tests import).
+
+### Product decisions the user made (don't undo)
+- Texts like a person: short, lowercase, no "great question"/"happy to help", no bullet lists; two thoughts = two texts. Never an LLM-sounding reply.
+- **Never guess or ask where they are in text.** Check Find My first; ask (card) only if not sharing, once.
+- Every choice is a tappable **poll**: 3 nearest places (named in a text first, poll built from the same list), then the 2 dishes. **No yes/no poll for directions** (plain text, link only after yes).
+- Dish picks always show the price; if a restaurant lists none (Saxby's, Starbucks), say so once.
+- Photos get a short casual calorie read; the model's numbers come from the detected items.
+- Group chats: reply only when addressed by name (`BOT_NAMES`), then that person's follow-ups for ~2.5 min.
+- Allergens/diets are enforced in code only; the model never says anything is "safe" (a guard rewrites it). Restrictions accumulate per chat and are never forgotten.
+
+### Things that bit us (so they don't again)
+- Poll votes are read by checking `polls.get` every 2 s (`src/polls.ts`); we haven't confirmed Photon's webhook forwards vote events. Only one vote per person per poll.
+- Photon retries slow webhooks, so the Function URL answers fast and an async self-invocation does the work; messages are deduped on id, async retries are off.
+- On forced/likely-fumbled first steps the code forces the tool (`wantsFood`, `wantsPlan`, `namesRestaurant` in `src/llm.ts`); the restaurant is read from the user's words, not from what the model passes.
+- A tool that already sent its message returns `sent_text`, and the model's follow-up is skipped (it used to repeat the message).
+- Find My reads work by **phone number** only (email is blocked on shared plans). `locations.list()` doesn't work on shared plans.
+- Available Bedrock models are older only (Haiku 4.5, Sonnet 4.5/4.6, Opus 4.5/4.6); 5.x returns "not available for this account".
+- Gemini 3.x "latest" models think for 30-45 s; that's why Gemini was replaced. Polly standard voices only in us-east-2.
+- `sharp`, `heif2jpeg` and the gRPC peers must be installed for linux-arm64 in the Lambda zip (the deploy script does it).
+- Shell reminder: run commands from the repo root with an absolute `cd`; `npx tsc` outside a project installs a wrong placeholder package.
+
+### Not verified / not done
+- `plan_meal` and the voice notes have **not been tried on real phones** (the poll flow, location flow, photos and Polly/Transcribe on Lambda were).
+- Group chats need the Business plan (ask Photon). The group poll logic still takes the first vote as the answer, and restrictions are per chat, not per person.
+- Bot has no name yet (set `BOT_NAMES` once chosen). "Today's Pie" card links need `PUBLIC_URL` (a hosted server); SAM 2 photo outlines need a GPU server (`SAM_URL`, Vultr was the idea).
+- Demo prep: register judges' numbers as users, warm the database before presenting, record a backup video.
+- After the hackathon rotate every key that was pasted into chat (Photon project secret, Gemini, ElevenLabs).
+
 ## Non-negotiable rules
 
 1. **Allergens and dietary restrictions are hard filters in code. The LLM never decides safety.**
