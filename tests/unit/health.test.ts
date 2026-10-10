@@ -64,6 +64,15 @@ test("ack takes the ids as a list or as the newline-joined text Shortcuts sends"
   const ids = mealsOf(await call("GET", token, "pending")).map((m) => m.id);
   assert.deepEqual((await call("POST", token, "ack", { ids: ids.join("\n") })).body, { acked: 2 });
   assert.deepEqual(await pendingMeals(keyFor(user)), []);
+
+  // The same text wrapped in a list, and no meals at all (an empty text), are fine too.
+  await tick();
+  await logMeal(user, { name: "C", calories: 1, protein: 1, price: 0 });
+  await tick();
+  await logMeal(user, { name: "D", calories: 1, protein: 1, price: 0 });
+  const more = mealsOf(await call("GET", token, "pending")).map((m) => m.id);
+  assert.deepEqual((await call("POST", token, "ack", { ids: [more.join("\n")] })).body, { acked: 2 });
+  assert.deepEqual((await call("POST", token, "ack", { ids: "" })).body, { acked: 0 });
   assert.equal((await call("POST", token, "ack", { ids: 5 })).status, 400);
   assert.equal((await handleHealthRequest("POST", `/health/${token}/ack`, "not json")).status, 400);
 });

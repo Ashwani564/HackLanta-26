@@ -81,6 +81,41 @@ secret as `webhookSecret` (see `src/lambda.ts`). Don't run the local bot and the
 
 Try the conversation without iMessage: `npx tsx --env-file=.env chat-sim.mts polls` (fakes Find My and poll taps; Bedrock and the database are real).
 
+## Apple Health sync
+
+Apple Health has no cloud API, so a Shortcut on the person's iPhone does the syncing. It calls three routes on the
+bot (`src/health.ts`), authenticated by a per-person token in the path:
+
+```
+GET  /health/<token>/pending    meals logged in chat today that aren't in Health yet
+POST /health/<token>/ack        { ids }  mark those meals as written
+POST /health/<token>/metrics    { active_kcal, steps, weight_kg | weight_lb }  numbers read from Health
+```
+
+**Try it against your laptop** (phone and laptop on the same Wi-Fi; allow Node through the firewall if asked):
+
+```bash
+npx tsx scripts/health-demo.ts     # logs two sample meals, prints the sync link; Enter logs another
+```
+
+**Build the "Pie Sync" shortcut** (Shortcuts app → + → name it Pie Sync). Six actions:
+
+1. **Text**: paste the sync link (everything up to and including the token, no trailing slash).
+2. **Get Contents of URL**: URL is the `Text` variable followed by `/pending`. Method GET.
+3. **Get Dictionary Value**: Get `Value` for `meals` in `Contents of URL`.
+4. **Repeat with Each** item in `Dictionary Value`. Inside the loop:
+   - **Log Health Sample**: Type `Dietary Energy`, Unit `kcal`, Value = `Repeat Item` (tap it → Get Value for Key `calories`).
+   - **Log Health Sample**: Type `Protein`, Unit `g`, Value = `Repeat Item` → key `protein`.
+   - **Add to Variable**: add `Repeat Item` → key `id` to a variable named `Synced`.
+5. After End Repeat, **Get Contents of URL**: URL is `Text` followed by `/ack`. Method POST, Request Body JSON, one
+   Text field `ids` = the `Synced` variable.
+
+Leave the Date on both Log Health Sample actions empty: the meal is stamped with the time the shortcut runs.
+
+**Check it**: run the shortcut, allow the connection and the Health write access it asks for, then open
+Health → Browse → Nutrition → Dietary Energy → Show All Data. The sample meals are there with source Shortcuts.
+Run it again: nothing new is added. Press Enter in the demo, run it once more: one new entry.
+
 ## Layout
 
 ```
@@ -97,10 +132,11 @@ bot/
 │   ├── vision.ts     # food photo: Claude finds items + calories (grid-assisted boxes), optional SAM 2 masks
 │   ├── voice.ts      # Polly + Transcribe (ElevenLabs optional)
 │   ├── day.ts, card.ts, day-art.ts, plan.ts, web.ts   # calorie tracking cards and dashboard
+│   ├── health.ts     # Apple Health sync routes: sync tokens, pending meals, acks, numbers from Health
 │   ├── store.ts      # DynamoDB in Lambda, in-memory locally
 │   ├── secrets.ts    # Photon credentials from Secrets Manager
 │   └── invite.ts     # contact-card invites, STOP opt-out
-├── scripts/          # deploy-lambda.sh, send.ts, card/plan demos
+├── scripts/          # deploy-lambda.sh, send.ts, card/plan/health demos
 ├── vision-server/    # optional SAM 2 service (npm run vision)
 └── chat-sim.mts      # local conversation simulator
 ```

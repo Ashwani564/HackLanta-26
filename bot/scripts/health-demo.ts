@@ -1,21 +1,51 @@
 // Usage: tsx scripts/health-demo.ts
-// Starts the local web server with two sample meals logged for a made-up person, and prints the
-// curl commands for the Apple Health sync routes. Nothing leaves this machine; state is in memory.
+// Starts the local web server with two sample meals logged for a made-up person, and prints the sync
+// link for the Apple Health shortcut (see "Apple Health sync" in the README). Press Enter to log another
+// sample meal. Nothing leaves this machine; state is in memory, so the link changes on every start.
+import { networkInterfaces } from "node:os";
+import { createInterface } from "node:readline";
 import { logMeal } from "../src/day.js";
 import { syncTokenFor } from "../src/health.js";
 import { startWeb } from "../src/web.js";
 
 const user = "+15550001234";
-await logMeal(user, { name: "Greek yogurt bowl", calories: 380, protein: 28, price: 6 });
-await new Promise((r) => setTimeout(r, 5));
-await logMeal(user, { name: "Chicken over rice", calories: 750, protein: 45, price: 11 });
+const samples = [
+  { name: "Greek yogurt bowl", calories: 380, protein: 28, price: 6 },
+  { name: "Chicken over rice", calories: 750, protein: 45, price: 11 },
+  { name: "Iced latte", calories: 190, protein: 10, price: 5.5 },
+  { name: "Burrito bowl", calories: 820, protein: 48, price: 12 },
+  { name: "Protein bar", calories: 210, protein: 20, price: 3 },
+];
+let next = 0;
+const logNext = async () => {
+  const meal = samples[next++ % samples.length]!;
+  await logMeal(user, meal);
+  console.log(`logged: ${meal.name} (${meal.calories} cal, ${meal.protein}g protein)`);
+};
 
-const base = `http://localhost:${process.env.PORT ?? 8787}/health/${await syncTokenFor(user)}`;
+await logNext();
+await new Promise((r) => setTimeout(r, 5));
+await logNext();
+
+const port = process.env.PORT ?? 8787;
+const path = `/health/${await syncTokenFor(user)}`;
+const local = `http://localhost:${port}${path}`;
+// A phone on the same Wi-Fi reaches this machine by its LAN address, not localhost.
+const lan = Object.values(networkInterfaces())
+  .flat()
+  .filter((n) => n?.family === "IPv4" && !n.internal)
+  .map((n) => `http://${n!.address}:${port}${path}`);
+
 startWeb();
 console.log(`
-sync link: ${base}
+sync link for the phone (same Wi-Fi):
+${lan.map((l) => `  ${l}`).join("\n") || "  (no network address found)"}
 
-curl ${base}/pending
-curl -X POST ${base}/ack -H "content-type: application/json" -d '{"ids":["<id from pending>"]}'
-curl -X POST ${base}/metrics -H "content-type: application/json" -d '{"active_kcal":412,"steps":8042,"weight_lb":165}'
+from this machine:
+  curl ${local}/pending
+  curl -X POST ${local}/ack -H "content-type: application/json" -d '{"ids":["<id from pending>"]}'
+  curl -X POST ${local}/metrics -H "content-type: application/json" -d '{"active_kcal":412,"steps":8042,"weight_lb":165}'
+
+press Enter to log another sample meal, Ctrl+C to stop
 `);
+createInterface({ input: process.stdin }).on("line", () => void logNext());

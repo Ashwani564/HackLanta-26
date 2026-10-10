@@ -124,10 +124,10 @@ export async function handleHealthRequest(method: string, path: string, rawBody 
   const fields = body as Record<string, unknown>;
 
   if (route === "ack") {
-    // A Shortcuts list can arrive as one newline-joined string instead of an array.
-    const ids = typeof fields.ids === "string" ? fields.ids.split("\n") : fields.ids;
+    // A Shortcuts list can arrive as one newline-joined text, or as a list holding such a text, instead of a plain list.
+    const ids = typeof fields.ids === "string" ? [fields.ids] : fields.ids;
     if (!Array.isArray(ids)) return { status: 400, body: { error: "ids must be a list" } };
-    const clean = ids.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean);
+    const clean = ids.filter((id): id is string => typeof id === "string").flatMap((id) => id.split("\n")).map((id) => id.trim()).filter(Boolean);
     return { status: 200, body: { acked: await ackMeals(key, clean) } };
   }
   return (await saveMetrics(key, fields))
