@@ -214,3 +214,10 @@ test("planFollowup only fires right after a plan request", () => {
   assert.ok(!planFollowup("Can you text them and see ", "I'm hungry"));
   assert.ok(!planFollowup("Can you text them and see ", undefined));
 });
+
+test("replyText collapses a phrase the model repeated with no space, but leaves ordinary text alone", () => {
+  assert.equal(replyText(["yo what's up, you hungry or somethingyou hungry or something"]), "yo what's up, you hungry or something");
+  assert.equal(replyText(["nah bro you never told me, what is itbro you never told me, what is it"]), "nah bro you never told me, what is it");
+  assert.equal(replyText(["get the falafel pocket. it's packed with hummus and roasted peppers"]), "get the falafel pocket. it's packed with hummus and roasted peppers");
+  assert.equal(replyText(["first thing", "second thing"]), "first thing\n\nsecond thing");
+});

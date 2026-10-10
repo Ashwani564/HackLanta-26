@@ -237,6 +237,9 @@ export function replyText(chunks: readonly string[]): string {
   const flat = joined.replace(/\s+/g, " ");
   const half = Math.floor(flat.length / 2);
   if (flat.length > 8 && flat.slice(0, half).trim() === flat.slice(flat.length - half).trim()) return flat.slice(0, half).trim();
+  // The model sometimes repeats its last phrase glued on with no space ("...hungry or somethingyou hungry or something").
+  const tail = /(.{8,}?)\1$/.exec(flat);
+  if (tail && !joined.includes("\n")) return flat.slice(0, flat.length - tail[1]!.length).trim();
   return joined;
 }
 
@@ -298,7 +301,7 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner, w
         system: [
           { text: SYSTEM },
           // One-on-one chats only. Restrictions come from their saved profile and are applied by the code, not by you.
-          ...(who ? [{ text: `you're texting ${who.name}. use their name now and then, naturally. their saved allergies and diet are already applied to every search, so don't ask about them and don't list them back unless they ask.` }] : []),
+          ...(who ? [{ text: `the person you're texting is ${who.name}, and you know it. if they ask whether you know their name, or what it is, say ${who.name}. any earlier message in this chat saying you don't know their name was from before you knew it; ignore it. use their name now and then, naturally. their saved allergies and diet are already applied to every search, so don't ask about them and don't list them back unless they ask.` }] : []),
         ],
         messages: [...history, ...turn],
         inferenceConfig: { maxTokens: 400, temperature: 0.7 },
