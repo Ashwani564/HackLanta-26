@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  iMessage dining bot on Lambda. Photon (Spectrum) posts webhooks to a public Function URL;
+  the function verifies the HMAC, acks, then processes the message in an async self-invocation
+  (Bedrock Claude, pgvector RAG from dining-vector-db, Find My, Polly). State lives in DynamoDB.
+  Deploy: bot/scripts/deploy-lambda.sh (creates/updates this stack, then uploads the code).
+
+Parameters:
+  DbClusterArn:
+    Type: String
+    Description: ClusterArn output of the dining-vector-db stack (infra/vector-db.yaml).
+  DbSecretArn:
+    Type: String
+    Description: SecretArn output of the dining-vector-db stack.
+  FfmpegLayerArn:
+    Type: String
+    Default: ""
+    Description: Layer from bot/scripts/build-ffmpeg-layer.sh. Empty means voice notes are off.
+  PhotonSecretName:
+    Type: String
+    Default: photon/project-secret
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+
+Conditions:
+  HasFfmpeg: !Not [!Equals [!Ref FfmpegLayerArn, ""]]
+
+Resources:
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+
+  BotRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: dining-bot
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Bedrock
+                Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:Converse]
+                Resource:
+                  - !Sub arn:aws:bedrock:*::foundation-model/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+              - Sid: VectorDb
+                Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BatchExecuteStatement]
+                Resource: !Ref DbClusterArn
+              - Sid: Secrets
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DbSecretArn
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${PhotonSecretName}-*
+              - Sid: State
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt StateTable.Arn
+              - Sid: Speech
+                Effect: Allow
+                Action: [polly:SynthesizeSpeech, transcribe:StartStreamTranscription]
+                Resource: "*"
+              - Sid: SelfInvoke
+                Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dining-bot
+
+  BotFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: dining-bot
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      Handler: index.handler
+      Layers: !If [HasFfmpeg, [!Ref FfmpegLayerArn], !Ref "AWS::NoValue"]
+      MemorySize: 1536
+      # Long on purpose: after sending a poll the function waits (cheaply) for the tap, up to ~4 minutes.
+      Timeout: 300
+      Role: !GetAtt BotRole.Arn
+      # Real code is uploaded by deploy-lambda.sh (update-function-code); this placeholder never changes,
+      # so stack updates don't overwrite it.
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({ statusCode: 503, body: "code not uploaded yet" });
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          EMBEDDING_MODEL_ID: !Ref EmbeddingModelId
+          DB_CLUSTER_ARN: !Ref DbClusterArn
+          DB_SECRET_ARN: !Ref DbSecretArn
+          DB_NAME: dining
+          STATE_TABLE: !Ref StateTable
+          PHOTON_SECRET_ID: !Ref PhotonSecretName
+          BOT_TIMEZONE: America/New_York
+          POLL_CHAIN_MS: "240000"
+          NODE_OPTIONS: --enable-source-maps
+
+  # The webhook hands each delivery to an async self-invocation. A retry would re-run a flow that is
+  # already waiting on a tap, so retries are off (deliveries are also deduped on message id).
+  BotAsyncConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref BotFunction
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 0
+
+  BotUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref BotFunction
+      # Public on purpose: Photon can't sign AWS requests. Every delivery is authenticated by its
+      # Photon HMAC signature in the handler instead.
+      AuthType: NONE
+
+  BotUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BotFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  BotUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BotFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  WebhookUrl:
+    Value: !GetAtt BotUrl.FunctionUrl
+  FunctionName:
+    Value: !Ref BotFunction
+  StateTableName:
+    Value: !Ref StateTable

@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  pgvector store for the dining agent RAG. Aurora PostgreSQL Serverless v2 with the RDS Data API,
+  so Lambda queries it over HTTPS and does not need to run inside the VPC. Scales to 0 ACU when idle.
+  No public access. The master password is generated and held in Secrets Manager.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: At least two subnets in different AZs.
+  DatabaseName:
+    Type: String
+    Default: dining
+  MaxCapacityAcu:
+    Type: Number
+    Default: 2
+  EngineVersion:
+    Type: String
+    Default: "17.11"
+
+Resources:
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Aurora for dining agent. No inbound rules; access is through the Data API only.
+      VpcId: !Ref VpcId
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Dining agent Aurora subnets
+      SubnetIds: !Ref SubnetIds
+
+  Cluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: !Ref EngineVersion
+      DatabaseName: !Ref DatabaseName
+      MasterUsername: postgres
+      ManageMasterUserPassword: true
+      EnableHttpEndpoint: true
+      StorageEncrypted: true
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DbSecurityGroup
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0
+        MaxCapacity: !Ref MaxCapacityAcu
+        SecondsUntilAutoPause: 300
+
+  Instance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+
+Outputs:
+  ClusterArn:
+    Value: !GetAtt Cluster.DBClusterArn
+  SecretArn:
+    Value: !GetAtt Cluster.MasterUserSecret.SecretArn
+  DatabaseName:
+    Value: !Ref DatabaseName

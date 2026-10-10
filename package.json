@@ -1,0 +1,26 @@
+{
+  "name": "dining-backend",
+  "version": "0.1.0",
+  "description": "Lambda backend for the iMessage dining agent: RAG over a pgvector dish catalog",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --import tsx --test \"tests/unit/*.test.ts\"",
+    "ingest": "tsx --env-file=.env scripts/ingest.ts",
+    "search": "tsx --env-file=.env scripts/search.ts",
+    "eval": "tsx --env-file=.env scripts/eval.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1000.0",
+    "@aws-sdk/client-rds-data": "^3.1000.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

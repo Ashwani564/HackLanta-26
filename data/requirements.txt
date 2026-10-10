@@ -1,0 +1,3 @@
+apify-client
+boto3
+python-dotenv
