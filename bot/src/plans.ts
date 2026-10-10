@@ -87,6 +87,8 @@ export interface Plan {
   proposed?: string;
   timeChoice?: string;
   places?: Place[];
+  /** How many places exist at all, so we can say "4 of 9 work for everyone". */
+  placesTotal?: number;
   placeChoice?: string;
   /** Don't wait past this for people's locations. */
   locWaitUntil?: number;
@@ -398,6 +400,8 @@ async function ensurePlaces(plan: Plan, d: PlanDeps): Promise<boolean> {
     return false;
   }
   plan.places = places;
+  // With no restrictions at all, how many places are there? (Only a count: nobody's restrictions are named.)
+  plan.placesTotal = Math.max(places.length, (await d.places({ allergies: [], diets: [] }, [])).length);
   return true;
 }
 
@@ -446,7 +450,10 @@ async function stageTime(plan: Plan, d: PlanDeps): Promise<boolean> {
   if (!(await ensurePlaces(plan, d))) return false;
   for (const p of askers(plan)) {
     if (p.place) continue;
-    p.place = await ask(plan, p, d, "and where to eat? these all work for everyone's food restrictions. tap every one you're up for", {
+    const n = plan.places!.length, total = plan.placesTotal ?? n;
+    // Say how many fit, without saying whose restrictions cut the list.
+    const intro = n === total ? `and where to eat? all ${n} spots work for everyone's food restrictions` : `and where to eat? ${n} of ${total} spots have something that works for everyone's food restrictions`;
+    p.place = await ask(plan, p, d, `${intro}. tap every one you're up for, or say "anywhere"`, {
       kind: "restaurant",
       plan: true,
       multi: true,
@@ -741,6 +748,8 @@ export async function watchPlan(d: PlanDeps, id: string, forMs: number) {
   }
 }
 
+const ANYWHERE = /\b(any ?where|any ?(place|spot|one|of them|of 'em)|all of (them|'em)|everything|i'?m (good|fine|easy) with (any|all)|don'?t care|doesn'?t matter|no preference|you pick|up to you|whatever)\b/i;
+
 const pendingAsk = (plan: Plan, p: Person): { key: AskKey; ask: Ask } | undefined => {
   for (const key of ["time", "confirm", "place", "alt"] as const) if (p[key] && !p[key]!.answer) return { key, ask: p[key]! };
   return undefined;
@@ -802,6 +811,14 @@ export async function handleReply(d: PlanDeps, phone: string, text: string): Pro
         const pending = pendingAsk(plan, person);
         if (!pending) return false;
         const options = pending.ask.rec.options;
+        // "anywhere" / "anything" / "i don't care" on the place question means every spot on the list is fine.
+        if (pending.key === "place" && ANYWHERE.test(text)) {
+          pending.ask.picks = options.map((o) => o.value);
+          pending.ask.answer = pending.ask.picks[0]!;
+          console.log(`  plan ${plan.id}: ${person.name} is fine with anywhere (${options.length} spots)`);
+          await advance(plan, d);
+          return true;
+        }
         const idx = await d.interpret(pending.ask.rec.title, options.map((o) => o.label), text);
         if (idx < 0 || idx >= options.length) return false;
         pending.ask.answer = options[idx]!.value;
@@ -835,7 +852,8 @@ export async function planNoteFor(phone: string, nowMs: number = Date.now()): Pr
           ? `proposed ${label(plan.proposed!)}; checking who can move to it`
           : `time is ${label(plan.timeChoice!)}; waiting on place votes from ${names(askers(plan).filter((p) => p.place && !p.place.answer)) || "nobody"}`;
   const out = plan.people.filter((p) => p.out);
-  return `${cap(plan.organizer.name)} asked to plan ${plan.meal} ${plan.day} with ${names(others)}. ${status}.${out.length > 0 ? ` can't make it: ${names(out)}.` : ""}`;
+  const spots = plan.places ? ` the place poll has ${plan.places.length} of ${plan.placesTotal ?? plan.places.length} spots: only those have something that works for everyone's food restrictions (don't say whose restrictions limit it).` : "";
+  return `${cap(plan.organizer.name)} asked to plan ${plan.meal} ${plan.day} with ${names(others)}. ${status}.${spots}${out.length > 0 ? ` can't make it: ${names(out)}.` : ""}`;
 }
 
 // ---------- the real dependencies ----------

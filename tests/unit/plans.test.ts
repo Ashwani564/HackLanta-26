@@ -4,7 +4,8 @@ import { type Place, type Plan, type PlanDeps, advance, altSlotsFor, chooseTime,
 import { getState, putState } from "../../bot/src/store.js";
 import type { PollRecord, PollSpec } from "../../bot/src/polls.js";
 import type { MeetupCard } from "../../bot/src/meetup-card.js";
-import { meetupJpeg } from "../../bot/src/meetup-card.js";
+import { meetupJpeg, useBundledFonts, wrapName } from "../../bot/src/meetup-card.js";
+import { existsSync } from "node:fs";
 
 const ASHAR = "+11111111111", ASHWANI = "+12222222222", PRINCY = "+13333333333";
 // 3:00 PM in New York (19:00 UTC), so dinner slots from 5:30 PM are all still ahead.
@@ -571,4 +572,47 @@ test("asking for a meal that's already over today says so first and texts nobody
   // dinner at the same moment is fine
   const dinner = (await startPlan(w.deps, { phone: ASHAR, chatGuid: `any;-;${ASHAR}` }, { meal: "dinner", day: "today", people: ["ashwani", "princy"] })) as { asking_time?: boolean };
   assert.equal(dinner.asking_time, true);
+});
+
+// ---------- place poll wording, "anywhere", and the card ----------
+
+test("when restrictions cut the list, the poll says how many of the places fit without saying whose restrictions", async () => {
+  const w = world();
+  const calls: number[] = [];
+  w.deps.places = async (r) => {
+    calls.push(r.diets.length);
+    return r.diets.length > 0 || r.allergies.length > 0 ? PLACES.slice(0, 2) : PLACES;
+  };
+  w.deps.restrictionsFor = async (g) => (g.endsWith(PRINCY) ? { allergies: [], diets: ["vegan"] } : { allergies: [], diets: [] });
+  await start(w);
+  assert.equal(w.polls.find((p) => p.phone === ASHWANI && p.title === "where to eat?")!.options.length, 2);
+  const text = w.textsTo(ASHWANI).find((t) => /where to eat/.test(t))!;
+  assert.match(text, /2 of 3 spots have something that works for everyone's food restrictions/);
+  assert.doesNotMatch(text, /vegan|princy/i);
+});
+
+test("with nothing limiting the list, all of them are offered and the poll says so", async () => {
+  const w = world();
+  await start(w);
+  assert.match(w.textsTo(ASHWANI).find((t) => /where to eat/.test(t))!, /all 3 spots work for everyone's food restrictions/);
+});
+
+test("saying 'anywhere' on the place question ticks every spot for them", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  assert.equal(await handleReply(w.deps, ASHWANI, "7:00"), true); // the time question comes first
+  assert.equal(await handleReply(w.deps, ASHWANI, "anywhere is fine"), true);
+  const plan = await w.plan(planId);
+  assert.deepEqual(plan.people.find((p) => p.name === "ashwani")!.place!.picks, PLACES.map((x) => x.name));
+  // not "anywhere" when it isn't about the place question: the model handles it as chat
+  assert.equal(await handleReply(w.deps, PRINCY, "what's the weather"), false);
+});
+
+test("the plan card: the font files ship, long names wrap to two lines, and it renders", async () => {
+  assert.ok(useBundledFonts(), "Inter must be found or card text turns into boxes on Lambda");
+  assert.ok(existsSync("bot/assets/fonts/Inter-ExtraBold.ttf") && existsSync("bot/assets/fonts/OFL.txt"));
+  assert.deepEqual(wrapName("Stir House Atlanta", 22), ["Stir House Atlanta"]);
+  assert.deepEqual(wrapName("Mangos Caribbean Restaurant", 22), ["Mangos Caribbean", "Restaurant"]);
+  const jpeg = await meetupJpeg({ meal: "dinner", place: "Mangos Caribbean Restaurant", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash" }, { name: "princy", walkMin: 4 }] });
+  assert.ok(jpeg.length > 5000);
 });

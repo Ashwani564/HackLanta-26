@@ -40,6 +40,12 @@ const getBot = () =>
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
+  // `aws lambda invoke --payload '{"kind":"cardtest"}'`: renders a sample plan card inside Lambda, to check the fonts are found.
+  if (event?.kind === "cardtest") {
+    const { meetupJpeg, useBundledFonts } = await import("./meetup-card.js");
+    const jpeg = await meetupJpeg({ meal: "dinner", place: "Stir House Atlanta", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash", walkMin: 6 }, { name: "princy", walkMin: 4 }, { name: "ashar" }], note: "font check" });
+    return { fontconfig: useBundledFonts() ?? "NOT FOUND", bytes: jpeg.length, jpegBase64: jpeg.toString("base64") };
+  }
   // Every minute (EventBridge): move "schedule dinner with…" plans along.
   if (event?.kind === "tick") {
     await loadSecrets();
