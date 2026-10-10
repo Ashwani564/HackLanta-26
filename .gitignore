@@ -17,3 +17,7 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+
+# graphify: share only graph.json + GRAPH_REPORT.md (force-added); keep local state out
+graphify-out/
+*.graphify-bak
