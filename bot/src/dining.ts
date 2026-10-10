@@ -143,6 +143,19 @@ export async function nearbyRestaurants(spaceId: string, origin: Origin, constra
   };
 }
 
+/** What people call the nine restaurants (squashed: no spaces or punctuation) -> the name we use. */
+const RESTAURANT_ALIASES: Record<string, string> = {
+  moes: "Moe's", mangos: "Mango's", queentea: "Queen Tea", saxbys: "Saxby's", starbucks: "Starbucks", stirhouse: "Stir House",
+  strikeoutwingz: "StrikeOut Wingz", strikeoutwings: "StrikeOut Wingz", indiaeats: "India Eats", mrfriesman: "Mr. Fries Man",
+};
+/** The restaurant a message names, if any. Read from what the person typed, not from what the model passes along. */
+export const restaurantNamed = (text: string): string | undefined => {
+  const t = text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const hit = Object.keys(RESTAURANT_ALIASES).find((a) => t.includes(a));
+  return hit ? RESTAURANT_ALIASES[hit] : undefined;
+};
+export const namesRestaurant = (text: string) => restaurantNamed(text) !== undefined;
+
 // ---------- two dishes at the restaurant they chose ----------
 
 const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -161,7 +174,14 @@ async function resolveRestaurant(spaceId: string, said: string, constraints: Con
   return found ? { id: found.restaurantId, name: sayName(found.restaurantId, found.restaurantName) } : undefined;
 }
 
-const price = (p: number | null) => (p === null ? "" : ` ($${Number.isInteger(p) ? p : p.toFixed(2)})`);
+/** Always shown. Many menu items have no price in the data; say so instead of leaving it blank or guessing. */
+export const price = (p: number | null) => (p === null ? " (no price listed)" : ` ($${Number.isInteger(p) ? p : p.toFixed(2)})`);
+
+/** Menus are missing prices for about half the dishes. When at least `n` priced dishes exist, pick from those. */
+export function preferPriced<T extends { priceUsd: number | null }>(ranked: readonly T[], n = 2): T[] {
+  const priced = ranked.filter((d) => d.priceUsd !== null);
+  return priced.length >= n ? priced : [...ranked];
+}
 const trimReason = (r: string) => r.trim().replace(/[.!\s]+$/, "");
 
 /** Menu names shout and carry noise ("CHICKEN TIKKA MASALLA - SERVED WITH RICE"). Say it like a person would. */
@@ -186,7 +206,10 @@ function reasonFor(p: Pick): string {
 
 /** Casual two-dish message. Allergy wording is added here, in code, never by the model. */
 export function composeDishMessage(restaurantName: string, picks: readonly Pick[], constraints: Constraints): string {
-  const label = (p: Pick) => `${p.name ?? tidyName(p.dish.dishName)}${price(p.dish.priceUsd)}`;
+  // If at least one pick has a price, every pick shows its price (or "no price listed"). If none do,
+  // say so once instead of repeating it on every line.
+  const anyPrice = picks.some((p) => p.dish.priceUsd !== null);
+  const label = (p: Pick) => `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd) : ""}`;
   const withReason = (lead: string, p: Pick, joiner: string) => {
     const r = reasonFor(p);
     return r ? `${lead}${joiner}${r}` : lead;
@@ -209,6 +232,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
       ]),
     );
   }
+  if (!anyPrice) lines.push(pick(["they don't list prices here", "no prices on their menu though", "their menu doesn't list prices"]));
   if (hasAllergy(constraints)) {
     const estimated = picks.some((p) => allergenConfidence(p.dish) === "unconfirmed");
     lines.push(
@@ -261,12 +285,13 @@ export async function restaurantDishes(
     ...(constraints.budgetMaxUsd !== undefined && { budgetMaxUsd: constraints.budgetMaxUsd }),
     ...(origin && { origin }),
   });
-  const picks = await pickDishes(request || "what's best on the menu", ranked, 2, { casual: true });
+  const picks = await pickDishes(request || "what's best on the menu", preferPriced(ranked), 2, { casual: true });
   const first = ranked[0]!;
   // Remember where this is so "yeah" to "want directions?" can send the link, and nothing is sent before that.
   await putState(destKey(spaceId), { name: place.name, lat: first.lat, lng: first.lng } satisfies Destination, 3 * 3600);
+  const anyPrice = picks.some((p) => p.dish.priceUsd !== null);
   const choices = picks.map((p): DishChoice => ({
-    label: `${p.name ?? tidyName(p.dish.dishName)}${price(p.dish.priceUsd)}`,
+    label: `${p.name ?? tidyName(p.dish.dishName)}${anyPrice ? price(p.dish.priceUsd) : ""}`,
     name: p.name ?? tidyName(p.dish.dishName),
     calories: p.dish.calories,
     proteinG: p.dish.proteinG,

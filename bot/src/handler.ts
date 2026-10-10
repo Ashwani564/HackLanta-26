@@ -9,7 +9,7 @@ import { sendDayCard } from "./card.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
   askDirections, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
-  mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantPoll, type Origin,
+  mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantNamed, restaurantPoll, type Origin,
 } from "./dining.js";
 import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type PollRecord, type PollSpec } from "./polls.js";
 import { findUser, inviteMessage, registerUser, removeUser, toE164 } from "./invite.js";
@@ -38,6 +38,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
 
   // The next choice to offer as a poll. Sent after the reply text so the order reads naturally.
   let queued: PollSpec | undefined;
+  // What the person just said (a transcript for voice notes). Used to read a restaurant name straight from their words.
+  let currentText = "";
 
   // A blank line in a reply means "send as a separate text", paced like someone typing.
   const sendBubbles = async (sp: any, text: string) => {
@@ -167,7 +169,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         return { ...near, poll_will_be_sent: !!queued };
       }
       case "restaurant_dishes":
-        return offerDishes(args as { restaurant: string; request?: string });
+        // If they named a restaurant, trust their words over whatever the model passed.
+        return offerDishes({ ...(args as { restaurant: string; request?: string }), restaurant: restaurantNamed(currentText) ?? String(args.restaurant ?? "") });
       case "pick_dish": {
         const out = await chooseDish(space.id, String(args.dish ?? ""));
         if (!out.text) return { error: out.error ?? "couldn't match that dish" };
@@ -185,6 +188,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
     }
   };
   const respond = async (text: string) => {
+    currentText = text;
     await space.responding(async () => {
       const reply = await chat(space.id, text, runTool);
       console.log(`  -> ${reply}`);

@@ -4,7 +4,7 @@ import { cleanCasualName, SAFETY_CLAIM, type Pick } from "../../src/pipeline/exp
 import { buildRestaurantsSql, buildSearchSql } from "../../src/rag/store.js";
 import type { Candidate, Constraints } from "../../src/types.js";
 import { wantsFood } from "../../bot/src/llm.js";
-import { composeDishMessage, dishPoll, pickVaried, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
+import { composeDishMessage, dishPoll, namesRestaurant, restaurantNamed, pickVaried, preferPriced, price, restaurantPoll, spotsText, tidyName } from "../../bot/src/dining.js";
 
 const none: Constraints = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
 const peanut: Constraints = { ...none, allergens: ["peanuts"] };
@@ -110,4 +110,47 @@ test("food requests are recognised, small talk and mid-flow answers are not", ()
   for (const no of ["hey", "what's up", "queen tea", "the beef rice", "yeah", "thanks", "how many calories in a burrito", "i had pizza for lunch", "my goal is 1800 cal", "I'm allergic to peanuts"]) {
     assert.ok(!wantsFood(no), `should not match: ${no}`);
   }
+});
+
+test("price is always shown, on the dish text and on the poll option", () => {
+  assert.equal(price(14.99), " ($14.99)");
+  assert.equal(price(12), " ($12)");
+  assert.equal(price(null), " (no price listed)");
+  const picks: Pick[] = [{ dish: dish({ priceUsd: 23.75, dishName: "15 Wings" }), reason: "big" }, { dish: dish({ dishId: "r__e", priceUsd: null, dishName: "Philly Fries" }), reason: "loaded" }];
+  const text = composeDishMessage("Mr. Fries Man", picks, none);
+  assert.match(text, /15 Wings \(\$23\.75\)/);
+  assert.match(text, /Philly Fries \(no price listed\)/);
+  // The poll labels are built the same way (name + price), so both always agree.
+  const choices = picks.map((p) => ({ label: `${tidyName(p.dish.dishName)}${price(p.dish.priceUsd)}`, name: tidyName(p.dish.dishName), calories: null, proteinG: null }));
+  assert.deepEqual(dishPoll("Mr. Fries Man", choices)!.options.map((o) => o.label), ["15 Wings ($23.75)", "Philly Fries (no price listed)"]);
+});
+
+test("priced dishes are preferred when there are at least two", () => {
+  const d = (id: string, p: number | null) => dish({ dishId: id, priceUsd: p });
+  assert.deepEqual(preferPriced([d("a", null), d("b", 12), d("c", null), d("d", 9)]).map((x) => x.dishId), ["b", "d"]);
+  // Only one priced dish: keep everything rather than offering a single choice.
+  assert.deepEqual(preferPriced([d("a", null), d("b", 12), d("c", null)]).map((x) => x.dishId), ["a", "b", "c"]);
+  assert.deepEqual(preferPriced([d("a", null), d("b", null)]).map((x) => x.dishId), ["a", "b"]);
+});
+
+test("when no pick has a price, it's said once instead of on every line", () => {
+  const picks: Pick[] = [{ dish: dish({ priceUsd: null, dishName: "Breakfast Burrito" }), reason: "48g protein" }, { dish: dish({ dishId: "r__e", priceUsd: null, dishName: "Quesadilla" }), reason: "30g protein" }];
+  const text = composeDishMessage("Saxby's", picks, none);
+  assert.doesNotMatch(text, /no price listed/);
+  assert.match(text, /(don't|doesn't) list prices|no prices/);
+  assert.equal((text.match(/prices/g) ?? []).length, 1);
+});
+
+test("messages that name a restaurant are recognised", () => {
+  for (const yes of ["mangos", "Moe's", "what's good at moes", "queen tea", "stir house", "strikeout wingz", "mr. fries man", "India Eats?", "saxby's"]) assert.ok(namesRestaurant(yes), yes);
+  for (const no of ["hey", "im hungry", "the beef rice", "yeah", "something spicy", "i had a burrito"]) assert.ok(!namesRestaurant(no), no);
+});
+
+test("the restaurant is read from the message, not guessed", () => {
+  assert.equal(restaurantNamed("strikeout wingz"), "StrikeOut Wingz");
+  assert.equal(restaurantNamed("strike out wings"), "StrikeOut Wingz"); // spacing and punctuation don't matter
+  assert.equal(restaurantNamed("StrikeOutWings"), "StrikeOut Wingz");
+  assert.equal(restaurantNamed("mangos"), "Mango's");
+  assert.equal(restaurantNamed("what's good at moe's?"), "Moe's");
+  assert.equal(restaurantNamed("im hungry"), undefined);
 });

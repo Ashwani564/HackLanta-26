@@ -9,6 +9,7 @@ import {
   type ToolInputSchema,
 } from "@aws-sdk/client-bedrock-runtime";
 import { SAFETY_CLAIM } from "../../src/pipeline/explain.js";
+import { namesRestaurant } from "./dining.js";
 import { getState, putState } from "./store.js";
 
 const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-2" });
@@ -236,7 +237,8 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
   const history = await loadHistory(spaceId);
   const turn: Message[] = [{ role: "user", content: [{ text }] }];
 
-  const forceLocation = wantsFood(text);
+  // First step is forced in code for the two messages the model sometimes fumbles: wanting food, and naming a restaurant.
+  const forced = wantsFood(text) ? "get_location" : namesRestaurant(text) ? "restaurant_dishes" : undefined;
   for (let round = 0; ; round++) {
     const res = await client.send(
       new ConverseCommand({
@@ -246,7 +248,7 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
         inferenceConfig: { maxTokens: 400, temperature: 0.7 },
         toolConfig: {
           tools: TOOLS,
-          ...(round === 0 && forceLocation && { toolChoice: { tool: { name: "get_location" } } }),
+          ...(round === 0 && forced && { toolChoice: { tool: { name: forced } } }),
         },
       }),
     );
@@ -271,6 +273,7 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
     }
 
     const results: ContentBlock[] = [];
+    const sentTexts: string[] = [];
     for (const { toolUse } of calls) {
       console.log(`  tool ${toolUse!.name} ${JSON.stringify(toolUse!.input ?? {})}`);
       let result: unknown;
@@ -282,9 +285,19 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner): 
         result = { error: err?.message ?? String(err) };
         status = "error";
       }
+      const sent = (result as { sent_text?: unknown } | undefined)?.sent_text;
+      if (status === "success" && typeof sent === "string") sentTexts.push(sent);
       results.push({ toolResult: { toolUseId: toolUse!.toolUseId, content: [{ json: { result } as any }], status } });
     }
     turn.push({ role: "user", content: results });
+
+    // Every tool this round already sent its message to the chat (dish picks, directions link...). The model has
+    // nothing left to add, and left to itself it sometimes repeats what was sent. Skip its follow-up entirely.
+    if (sentTexts.length === calls.length) {
+      turn.push({ role: "assistant", content: [{ text: sentTexts.join("\n\n") }] });
+      await saveHistory(spaceId, [...history, ...turn]);
+      return NO_REPLY;
+    }
   }
 }
 
