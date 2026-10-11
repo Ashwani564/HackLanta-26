@@ -26,3 +26,17 @@ async function getToken(): Promise<string> {
 
 export const im = createGrpcClient({ address: ADDRESS, tls: true, retry: true, token: getToken });
 
+
+/**
+ * Download a received attachment through Photon's API. Used when the webhook delivers an attachment without its
+ * bytes (voice notes arrive that way, and Spectrum's iMessage provider has no getAttachment to fetch them).
+ */
+export async function downloadMessageAttachment(messageGuid: string): Promise<{ bytes: Buffer; mimeType: string } | undefined> {
+  const msg = await im.messages.get(messageGuid);
+  const att = msg.content.attachments.find((a) => !a.isHidden) ?? msg.content.attachments[0];
+  if (!att) return undefined;
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of im.attachments.downloadStream(att.guid)) if (chunk.type === "primaryChunk") chunks.push(chunk.data);
+  const bytes = Buffer.concat(chunks);
+  return bytes.length > 0 ? { bytes, mimeType: att.mimeType } : undefined;
+}

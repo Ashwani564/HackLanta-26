@@ -4,6 +4,7 @@ import { imessage } from "spectrum-ts/providers/imessage";
 import { NO_REPLY, chat, remember, reset, VOICE_PROMPT, type ToolRunner } from "./llm.js";
 import { locate as realLocate } from "./findmy.js";
 import { canConvertAudio, speak, toWav, transcribe } from "./voice.js";
+import { downloadMessageAttachment } from "./photon.js";
 import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
 import { connectHealth, dayGoals, getMetrics, healthSummary } from "./health.js";
@@ -376,7 +377,16 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         let step = "reading the audio";
         let transcript: string | undefined;
         try {
-          const bytes = await message.content.read();
+          let bytes: Buffer;
+          try {
+            bytes = Buffer.from(await message.content.read());
+          } catch (err) {
+            // The webhook sent the voice note without its audio: fetch it through Photon's API instead.
+            console.warn(`  voice bytes missing from the webhook (${(err as Error).message.slice(0, 80)}); downloading through Photon`);
+            const got = await downloadMessageAttachment(message.id);
+            if (!got) throw new Error(`no audio attachment found for message ${message.id}`);
+            bytes = got.bytes;
+          }
           console.log(`  voice ${message.content.mimeType} ${bytes.length} bytes`);
           step = "converting the audio (ffmpeg)";
           const wav = await toWav(bytes);
