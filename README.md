@@ -8,6 +8,15 @@ Your friend who checks the menu before you do. Text it a menu or food photo, ask
 | `src/`, `scripts/`, `tests/`, `infra/` | AWS backend: allergen-safe dish retrieval (RAG over pgvector). **Work in progress, see [Backend status](#backend-status-honest-version).** |
 | [`data/`](data/) | Scraped catalog of 9 GSU-area restaurants and the script that builds it. |
 
+## Architecture
+
+![Snacxx architecture: iMessage and Photon Spectrum in front, an AWS Lambda bot behind them with Bedrock, Aurora pgvector, DynamoDB, Polly/Transcribe, EventBridge and Secrets Manager](docs/architecture.png)
+
+Snacxx is an iMessage agent built on [Photon Spectrum](https://photon.codes/spectrum) (`spectrum-ts`) and AWS. Photon delivers each
+message to a Lambda Function URL, which answers fast and runs the work asynchronously: Claude on Bedrock picks the tools, allergens
+and diets are filtered in code against Aurora pgvector, state lives in DynamoDB, and an EventBridge rule moves meal plans along every
+minute. Editable source: [`docs/snacxx-architecture.drawio`](docs/snacxx-architecture.drawio) (open it in draw.io).
+
 ## Quick start
 
 ```bash
