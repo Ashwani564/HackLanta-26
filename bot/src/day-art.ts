@@ -36,7 +36,7 @@ export async function dayJpeg(day: Day): Promise<Buffer> {
   return sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
 }
 
-function defs() {
+export function defs() {
   return `<defs>
     <pattern id="gingham" width="64" height="64" patternUnits="userSpaceOnUse">
       <rect width="64" height="64" fill="#FFF8F0"/>
@@ -70,7 +70,7 @@ const polar = (cx: number, cy: number, r: number, deg: number) => {
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)] as const;
 };
 
-function pizza(cx: number, cy: number, f: number, over: number) {
+export function pizza(cx: number, cy: number, f: number, over: number) {
   const R = 238;
   const board = `
     <circle cx="${cx}" cy="${cy}" r="${R + 34}" fill="#C98A52" filter="url(#shadow)"/>
