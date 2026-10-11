@@ -20,17 +20,21 @@ export async function sendDmImage(app: any, phone: string, image: Buffer, name =
 }
 
 /**
- * Send one person the plan card as an iMessage app card (picture with the title over it, caption row under it, like the
- * "Today's Pie" card) that opens `url` when tapped. If the layout can't be sent it goes as a rich link instead.
+ * Send one person the plan card. Default: an iMessage rich link, whose big preview is the card art (the page's og:image,
+ * see meetup-art.ts); it shows on every phone. PLAN_CARD=app sends the native app card instead (picture + caption row, like
+ * the "Today's Pie" card), which some phones only draw as a small icon with captions. Falls back to the other format.
  */
 export async function sendDmCard(app: any, phone: string, url: string, card: MeetupCard): Promise<void> {
   const im = imessage(app as any);
   const dm = await im.space.create(await im.user(phone));
+  const asApp = async () => dm.send(appCard(url, { layout: await meetupLayout(card) }));
+  const asLink = async () => dm.send(richlink(url));
+  const [first, second] = process.env.PLAN_CARD === "app" ? [asApp, asLink] : [asLink, asApp];
   try {
-    await dm.send(appCard(url, { layout: await meetupLayout(card) }));
+    await first();
   } catch (err) {
-    console.warn(`  app card failed, sending a rich link: ${(err as Error).message}`);
-    await dm.send(richlink(url));
+    console.warn(`  plan card failed (${(err as Error).message}); trying the other format`);
+    await second();
   }
 }
 
