@@ -143,11 +143,13 @@ async function processDelivery({ body, headers }: Delivery) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * `aws lambda invoke --payload '{"kind":"selftest"}'`: proves ffmpeg, Polly and Transcribe work inside Lambda.
+ * `aws lambda invoke --payload '{"kind":"selftest"}'`: proves ffmpeg, speech (ElevenLabs or Polly) and transcription work inside Lambda, and says which voice engine is in use.
  * Add `"audioBase64"` (e.g. an iPhone voice note, CAF/Opus) to check that a real recording is understood too.
  */
 async function selfTest(audioBase64?: string) {
-  const { canConvertAudio, speak, toWav, transcribe } = await import("./voice.js");
+  const { canConvertAudio, elevenLabsEnabled, speak, toWav, transcribe } = await import("./voice.js");
+  await loadSecrets(); // so the check sees the same ElevenLabs key a real message does
+  const engine = elevenLabsEnabled() ? "elevenlabs" : "amazon-polly";
   if (!canConvertAudio()) return { ok: false, error: "ffmpeg not found (is the layer attached?)" };
   const started = Date.now();
   if (audioBase64) {
@@ -157,7 +159,7 @@ async function selfTest(audioBase64?: string) {
   }
   const { audio, duration } = await speak("Try the beef rice at Queen Tea. It's about six hundred fifty calories.");
   const transcript = await transcribe(await toWav(audio));
-  return { ok: !!transcript, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
+  return { ok: !!transcript, voiceEngine: engine, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
 }
 
 // ---------- plan card pages: GET /card/<token> (the page) and /card/<token>.jpg (its picture) ----------
