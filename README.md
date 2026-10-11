@@ -25,6 +25,9 @@ The AWS backend is **partly built**. The part that decides *which dishes are saf
 part that connects it to iMessage does not exist yet. Today the live bot is still the Gemini bot in `bot/`; it does **not**
 use any of this.
 
+<img width="1203" height="635" alt="image" src="https://github.com/user-attachments/assets/4cb18dd4-74a8-4010-9caa-9c3acace3c9c" />
+
+
 ### What works
 
 Given a text like "allergic to peanuts, recommend Thai", the code can: parse it with Claude Haiku 4.5 on Bedrock, merge it
