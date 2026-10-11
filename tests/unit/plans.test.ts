@@ -772,3 +772,17 @@ test("the card page: link-preview tags, escaped names, and a token that can't be
   assert.equal(await loadCard("../../etc/passwd"), undefined);
   assert.equal(isCardToken("short"), false);
 });
+
+test("app card art: clock hands sit on the meeting time, and the layout names the place, time and who's going", async () => {
+  const { clockAngles, meetupLayout } = await import("../../bot/src/meetup-art.js");
+  assert.deepEqual(clockAngles("7:30 PM"), { hour: 225, minute: 180 });
+  assert.deepEqual(clockAngles("12:00 PM"), { hour: 0, minute: 0 });
+  const card: MeetupCard = { meal: "dinner", place: "Stir House Atlanta", time: "7:30 PM", date: "Saturday, Oct 10", people: [{ name: "ash", walkMin: 6 }, { name: "princy", walkMin: 4 }] };
+  const layout = await meetupLayout(card);
+  assert.equal(layout.caption, "Stir House Atlanta");
+  assert.equal(layout.subcaption, "7:30 PM · Ash, Princy");
+  assert.equal(layout.trailingCaption, "2 going");
+  assert.equal(layout.trailingSubcaption, "6 min walk");
+  assert.equal(layout.imageTitle, "Dinner's on");
+  assert.ok(layout.image.length > 10_000, "the picture rendered");
+});

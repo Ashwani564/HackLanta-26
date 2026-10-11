@@ -975,7 +975,7 @@ export function realPlanDeps(
   app: any,
   sendDm: (app: any, phone: string, text: string) => Promise<string>,
   sendImage?: (app: any, phone: string, image: Buffer) => Promise<void>,
-  sendCardLink?: (app: any, phone: string, url: string) => Promise<void>,
+  sendCardLink?: (app: any, phone: string, url: string, card: MeetupCard) => Promise<void>,
   openDm?: (app: any, phone: string) => Promise<string>,
 ): PlanDeps {
   return {
@@ -990,7 +990,7 @@ export function realPlanDeps(
         const url = sendCardLink ? await publishCard(card).catch(() => undefined) : undefined;
         if (url && sendCardLink) {
           try {
-            await sendCardLink(app, phone, url);
+            await sendCardLink(app, phone, url, card);
             return;
           } catch (err) {
             console.warn(`  card link failed, sending the picture instead: ${(err as Error).message}`);
