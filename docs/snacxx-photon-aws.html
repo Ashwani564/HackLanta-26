@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Snacxx: Photon to the fullest, on AWS</title>
+<style>
+@font-face{font-family:Inter;font-weight:400;src:url("../devpost-images/src/Inter-Regular.ttf")}
+@font-face{font-family:Inter;font-weight:600;src:url("../devpost-images/src/Inter-SemiBold.ttf")}
+@font-face{font-family:Inter;font-weight:800;src:url("../devpost-images/src/Inter-ExtraBold.ttf")}
+@page{size:Letter;margin:0}
+:root{--ink:#1d1a2b;--mut:#5d5a70;--ora:#F97316;--amb:#FBBF24;--dk:#0B0B0F;--pl:#1B1026;--line:#e7e3f0;--blue:#0A84FF}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Helvetica,Arial,sans-serif;color:var(--ink);font-size:9.6pt;line-height:1.38}
+.page{width:8.5in;height:11in;padding:.55in .6in;position:relative;overflow:hidden;page-break-after:always}
+.page:last-child{page-break-after:auto}
+.hero{background:linear-gradient(160deg,var(--dk),var(--pl));color:#fff;margin:-.55in -.6in .3in;padding:.45in .6in .28in;border-bottom:5px solid var(--ora)}
+.eyebrow{color:var(--amb);font-weight:800;letter-spacing:.14em;font-size:8.5pt;text-transform:uppercase}
+h1{font-size:27pt;line-height:1.05;margin:.08in 0 .1in;font-weight:800}
+h1 em{font-style:normal;color:var(--ora)}
+.sub{color:#d7d2e8;font-size:11.5pt;max-width:6.2in}
+h2{font-size:13.5pt;margin:.14in 0 .05in;font-weight:800}
+h2 .n{color:var(--ora)}
+.stats{display:flex;gap:.12in;margin-top:.14in}
+.stat{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:.1in .12in}
+.stat b{display:block;font-size:19pt;color:var(--amb);font-weight:800;line-height:1.1}
+.stat span{font-size:8.5pt;color:#d7d2e8}
+table{width:100%;border-collapse:collapse;margin-top:.06in}
+th{text-align:left;font-size:8.2pt;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);padding:5px 8px;border-bottom:2px solid var(--ink)}
+td{padding:3.5px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-size:8.8pt}
+td:first-child{font-weight:800;white-space:nowrap;color:var(--ink)}
+td.ok{color:#127a3b;font-weight:600}
+.pill{display:inline-block;background:#fff3e6;color:#b45309;border-radius:20px;padding:1px 8px;font-size:8.2pt;font-weight:600}
+.cols{display:flex;gap:.18in}
+.card{flex:1;border:1px solid var(--line);border-radius:10px;padding:.11in .14in;background:#fbfaff}
+.card h3{margin:0 0 .04in;font-size:10.5pt;font-weight:800}
+.card p,.card li{margin:0;font-size:9.4pt;color:#35324a}
+.card ul{margin:0;padding-left:15px}
+.note{background:#fff7ed;border-left:4px solid var(--ora);padding:.08in .14in;border-radius:4px;margin-top:.14in;font-size:9.4pt}
+.foot{position:absolute;left:.6in;right:.6in;bottom:.3in;font-size:8pt;color:var(--mut);display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:6px}
+ol.flow{margin:.04in 0 0;padding-left:20px}
+ol.flow li{margin:2px 0;font-size:9.6pt}
+svg text{font-family:Inter,Helvetica,Arial,sans-serif}
+</style></head><body>
+
+<!-- PAGE 1 -->
+<div class="page">
+ <div class="hero">
+  <div class="eyebrow">Photon · Agents in iMessage</div>
+  <h1>Snacxx uses Photon <em>to the fullest.</em></h1>
+  <div class="sub">One text to a friend in iMessage plans a meal for a whole group. Every Photon capability is in the product, each one doing real work, and it runs end to end on AWS.</div>
+  <div class="stats">
+   <div class="stat"><b>9</b><span>Photon capabilities in production use</span></div>
+   <div class="stat"><b>1 text</b><span>starts a private plan with every friend</span></div>
+   <div class="stat"><b>~100</b><span>active users served in real time today</span></div>
+   <div class="stat"><b>Serverless</b><span>pay per use, near-zero when idle</span></div>
+  </div>
+ </div>
+
+ <h2><span class="n">01</span> How Snacxx uses Photon</h2>
+ <table>
+  <tr><th>Photon feature</th><th>What it does in Snacxx</th><th>Why it matters</th></tr>
+  <tr><td>Native polls</td><td>Multi-select time and place polls; the agent waits until taps settle and sends no reply per tap.</td><td>Friends vote with a tap and get no spam.</td></tr>
+  <tr><td>Find My</td><td>Requests and reads each person's location for the "closest fair spot" and nearby food.</td><td>A real, fair place instead of a guess.</td></tr>
+  <tr><td>Contact cards</td><td>A friend's shared contact becomes a registered user and gets an intro text.</td><td>Growth is one tap inside the chat.</td></tr>
+  <tr><td>Attachments</td><td>Reads food photos for calories; sends back rendered images.</td><td>Calorie tracking with no typing.</td></tr>
+  <tr><td>Voice notes</td><td>Voice in and out (ElevenLabs Scribe and Flash v2.5). Voice notes arrive without audio bytes, so the agent downloads them through Photon's API.</td><td>Hands-free, natural conversation.</td></tr>
+  <tr><td>Rich-link cards</td><td>Our two custom cards, built with the Spectrum library, arrive in the thread.</td><td>Product-grade UI inside a text.</td></tr>
+  <tr><td>Typing + reactions</td><td>Typing indicator while thinking; tapbacks on photos and contacts.</td><td>Reads like a friend, not a bot.</td></tr>
+  <tr><td>Webhooks</td><td>Every inbound message is delivered to our serverless backend, HMAC-signed.</td><td>Always on, scales with traffic.</td></tr>
+  <tr><td>Direct messages</td><td>Each friend is texted privately on their own line. No group chat is needed.</td><td>Group planning on Photon's shared pool.</td></tr>
+ </table>
+
+ <h2><span class="n">02</span> Two cards, made with Spectrum</h2>
+ <div class="cols">
+  <div class="card"><h3>Today's Pie</h3><p>A calorie, protein and monthly-budget tracker drawn as a pizza that fills as you eat, updated in place all day.</p></div>
+  <div class="card"><h3>Event confirmation</h3><p>Place, time, date, who's coming and each person's walk, sent to everyone once the group agrees.</p></div>
+ </div>
+  <div class="foot"><span>Snacxx · HackLanta '26</span><span>1</span></div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page">
+ <div class="eyebrow" style="color:var(--ora)">Architecture</div>
+ <h1 style="font-size:22pt;margin:.05in 0 .02in">From one text to a finished plan, on AWS</h1>
+ <div style="color:var(--mut);margin-bottom:.1in">Serverless from edge to database: nothing to patch, nothing running when nobody is texting.</div>
+
+ <svg viewBox="0 0 720 330" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5d5a70"/></marker></defs>
+  <rect x="0" y="0" width="720" height="330" rx="12" fill="#faf9ff" stroke="#e7e3f0"/>
+  <g font-size="11" font-weight="700" text-anchor="middle">
+   <rect x="14" y="120" width="100" height="70" rx="10" fill="#0A84FF"/><text x="64" y="150" fill="#fff">Friends</text><text x="64" y="166" fill="#fff" font-weight="400" font-size="9.5">iMessage</text>
+   <rect x="148" y="120" width="112" height="70" rx="10" fill="#1B1026"/><text x="204" y="150" fill="#FBBF24">Photon</text><text x="204" y="166" fill="#fff" font-weight="400" font-size="9.5">Spectrum + iMessage</text>
+   <rect x="294" y="120" width="112" height="70" rx="10" fill="#fff" stroke="#F97316" stroke-width="2"/><text x="350" y="148" fill="#1d1a2b">Lambda URL</text><text x="350" y="164" fill="#5d5a70" font-weight="400" font-size="9.5">verify HMAC, ack 200</text><text x="350" y="178" fill="#5d5a70" font-weight="400" font-size="9.5">dedupe by message id</text>
+   <rect x="440" y="120" width="120" height="70" rx="10" fill="#F97316"/><text x="500" y="148" fill="#fff">Lambda worker</text><text x="500" y="164" fill="#fff" font-weight="400" font-size="9.5">Node 22, arm64</text><text x="500" y="178" fill="#fff" font-weight="400" font-size="9.5">async self-invoke</text>
+   <rect x="598" y="14" width="108" height="46" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="652" y="35" fill="#1d1a2b">Bedrock</text><text x="652" y="49" fill="#5d5a70" font-weight="400" font-size="9">Claude Haiku 4.5</text>
+   <rect x="598" y="72" width="108" height="46" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="652" y="93" fill="#1d1a2b">Aurora pgvector</text><text x="652" y="107" fill="#5d5a70" font-weight="400" font-size="9">menus (RAG)</text>
+   <rect x="598" y="130" width="108" height="46" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="652" y="151" fill="#1d1a2b">DynamoDB</text><text x="652" y="165" fill="#5d5a70" font-weight="400" font-size="9">users, plans, history</text>
+   <rect x="598" y="188" width="108" height="46" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="652" y="209" fill="#1d1a2b">ElevenLabs</text><text x="652" y="223" fill="#5d5a70" font-weight="400" font-size="9">voice in and out</text>
+   <rect x="598" y="246" width="108" height="46" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="652" y="267" fill="#1d1a2b">Secrets Manager</text><text x="652" y="281" fill="#5d5a70" font-weight="400" font-size="9">keys never in code</text>
+   <rect x="444" y="30" width="112" height="48" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="500" y="51" fill="#1d1a2b">EventBridge</text><text x="500" y="65" fill="#5d5a70" font-weight="400" font-size="9">1-minute plan tick</text>
+   <rect x="294" y="30" width="112" height="48" rx="8" fill="#fff" stroke="#c9c3dd"/><text x="350" y="51" fill="#1d1a2b">Apple Health</text><text x="350" y="65" fill="#5d5a70" font-weight="400" font-size="9">via a Shortcut</text>
+  </g>
+  <g stroke="#5d5a70" stroke-width="1.6" fill="none" marker-end="url(#a)">
+   <path d="M114 155 H146"/><path d="M260 155 H292"/><path d="M406 155 H438"/>
+   <path d="M560 140 L596 40"/><path d="M560 145 L596 95"/><path d="M560 155 L596 153"/><path d="M560 168 L596 208"/><path d="M560 178 L596 264"/>
+   <path d="M350 78 V118"/><path d="M500 78 V118"/>
+  </g>
+  <g stroke="#0A84FF" stroke-width="1.6" fill="none" stroke-dasharray="4 3" marker-end="url(#a)"><path d="M440 190 Q330 232 262 192"/></g>
+  <text x="352" y="232" font-size="9" fill="#0A84FF" text-anchor="middle">replies, polls, cards</text>
+ </svg>
+
+ <h2><span class="n">03</span> What happens to one message</h2>
+ <ol class="flow">
+  <li><b>Photon delivers</b> the iMessage to our public Function URL as a signed webhook.</li>
+  <li><b>The function verifies</b> the HMAC signature (5-minute replay window), acknowledges within milliseconds and drops duplicates.</li>
+  <li><b>It hands off</b> to an async copy of itself, so slow work (the model, a long poll wait) never delays Photon. Retries are off, so a flow never runs twice.</li>
+  <li><b>The worker thinks:</b> it loads the user and chat history, runs Claude on Bedrock with tools (location, menus, meal log, plan), and queries Aurora for menus.</li>
+  <li><b>It answers through Photon:</b> text, poll, Find My request, voice note or rich card, and every friend is reached privately.</li>
+  <li><b>EventBridge ticks each minute</b> to move group plans forward (time, then confirm, then place, then card) even while nobody is texting.</li>
+ </ol>
+
+ <h2><span class="n">04</span> Deploy: one command, verified</h2>
+ <div class="cols">
+  <div class="card"><h3>Infrastructure as code</h3><p>CloudFormation stacks create the function, tables, IAM, schedule and URL. Re-running is safe.</p></div>
+  <div class="card"><h3>One-command deploy</h3><p><code>npm run deploy</code> builds, uploads, and we check the deployed code hash against the build. A self-test checks voice and Bedrock.</p></div>
+  <div class="card"><h3>Observable</h3><p>Every step logs to CloudWatch with the user, tool calls and replies, so a problem is traceable in seconds.</p></div>
+ </div>
+ <div class="foot"><span>Snacxx · HackLanta '26</span><span>2</span></div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page">
+ <div class="eyebrow" style="color:var(--ora)">Scale and security</div>
+ <h1 style="font-size:22pt;margin:.05in 0 .02in">Built for 100 users now, and for growth</h1>
+ <div style="color:var(--mut);margin-bottom:.08in">Every layer scales on demand. The limits below are settings and quotas, not rewrites.</div>
+
+ <h2 style="margin-top:.12in"><span class="n">05</span> Scale</h2>
+ <table>
+  <tr><th>Layer</th><th>How it scales</th><th>Today</th></tr>
+  <tr><td>Webhook + worker</td><td>Lambda runs one copy per message in parallel; 1.5 GB, arm64. Fast ack, slow work async.</td><td class="ok">400 concurrent (adjustable)</td></tr>
+  <tr><td>State</td><td>DynamoDB pay-per-request: no capacity to plan, scales to any request rate.</td><td class="ok">Effectively unlimited</td></tr>
+  <tr><td>Menu search</td><td>Aurora Serverless v2 with pgvector, over the Data API; scales from 0 up to its ACU cap.</td><td class="ok">0 to 2 ACU (one setting to raise)</td></tr>
+  <tr><td>Model</td><td>Bedrock Claude Haiku 4.5 through a cross-region inference profile.</td><td>50 requests/min default quota</td></tr>
+  <tr><td>Plans</td><td>EventBridge tick moves every active plan forward; plan state is stored per plan.</td><td class="ok">Many plans in parallel</td></tr>
+ </table>
+ <div class="note"><b>Honest sizing:</b> ~100 active users are comfortable today. The first limit we would meet is the model's requests-per-minute quota, which is a routine increase request. After that come the Aurora ACU cap and Lambda concurrency, both settings.</div>
+
+ <div class="note" style="margin-top:.06in"><b>Growth path:</b> 10x is three settings (Bedrock quota, Aurora ACU cap, reserved Lambda concurrency). 100x adds a queue (SQS) between webhook and worker and caching of menu answers. Each Photon user has their own line, so load also spreads across lines.</div>
+
+<h2><span class="n">06</span> Security</h2>
+ <table>
+  <tr><th>Concern</th><th>What we do</th></tr>
+  <tr><td>Who can call us</td><td>The URL is public because Photon can't sign AWS requests, so every delivery is authenticated by Photon's HMAC-SHA256 signature, checked in constant time with a 5-minute replay window. Unsigned requests are rejected.</td></tr>
+  <tr><td>Secrets</td><td>Photon and ElevenLabs keys live in Secrets Manager and are read at runtime; none are in code or the repo.</td></tr>
+  <tr><td>Least privilege</td><td>The function's IAM role can only touch its own tables, its own database cluster, its own secrets and itself.</td></tr>
+  <tr><td>Data at rest</td><td>Aurora storage is encrypted; the users table has encryption, point-in-time recovery and is retained if the stack is deleted; chat state expires on a TTL.</td></tr>
+  <tr><td>Food safety + privacy</td><td>A code-level guard, not the AI, checks allergies and diet, and the bot never calls a dish "safe". In groups, friends see only the merged restrictions needed to pick a place, never anyone's health numbers.</td></tr>
+  <tr><td>Consent + reliability</td><td>Only registered, opted-in users can message the bot, and invited friends can reply STOP. Duplicate deliveries are dropped, retries are off, and voice falls back to Polly if ElevenLabs is down.</td></tr>
+ </table>
+ <div class="foot"><span>Snacxx · HackLanta '26 · Photon Spectrum · AWS · Claude · ElevenLabs</span><span>3</span></div>
+</div>
+</body></html>
