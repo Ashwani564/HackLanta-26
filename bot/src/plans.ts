@@ -279,7 +279,7 @@ function ackFor(key: AskKey, a: Ask): string | undefined {
   if (picked.length === 0 || picked.some((v) => v === "no" || v === "none")) return undefined;
   const names = picked.map((v) => (a.rec.options.find((o) => o.value === v)?.label ?? v).replace(/ · \d+ min$/, ""));
   const said = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-  return pick([`got it, ${said}`, `${said}, noted`, `ok, ${said} for you`]);
+  return pick([`got it, ${said}`, `${said}, noted`, `bet, ${said} for you`, `${said}, locked in`]);
 }
 
 async function readAnswers(plan: Plan, d: PlanDeps) {
@@ -334,7 +334,7 @@ async function chase(plan: Plan, d: PlanDeps, key: AskKey) {
       }
     } else if (NUDGE_MS() > 0 && !a.nudged && now - a.sentAt > NUDGE_MS()) {
       a.nudged = true;
-      await d.sendText(p.phone, pick(["still need your pick on that poll 👆", "when you get a sec, tap one on the poll above", "no rush, just need your pick on the poll"]));
+      await d.sendText(p.phone, pick(["still need your pick on that poll 👆", "when you get a sec, tap one on the poll above", "no rush, just need your pick on the poll", "bro tap one on the poll above when you can"]));
     }
   }
 }
@@ -361,7 +361,7 @@ async function hold(plan: Plan, d: PlanDeps, key: AskKey) {
   for (const p of askers(plan)) {
     if (!p[key]?.answer || p.held?.[key] || p[key]!.answer === "no-answer" || stillMoving(plan, p)) continue;
     (p.held ??= {})[key] = true;
-    await d.sendText(p.phone, pick(["got it, hang tight while i check with the others", "nice, hang tight while i check with everyone else", "ok got it. hang tight, checking with the others"]));
+    await d.sendText(p.phone, pick(["got it, hang tight while i check with the others", "nice, hang tight while i check with everyone else", "ok got it. hang tight, checking with the others", "bet, hang tight gang, still waiting on the others"]));
   }
 }
 
