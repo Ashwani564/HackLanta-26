@@ -1,6 +1,6 @@
-# Snacxx: the friend in your iMessage who already knows what you can eat
+# Snacxx: the group meal planning agent in your iMessage that knows what everyone can eat
 
-**Snacxx is an iMessage agent built on Photon Spectrum. Text it "i'm hungry" and it finds the nearest places with food you can actually eat, at a price you can afford, and lets you tap your way to a dish. Ask it to plan dinner with friends and it texts each of them, settles a time and a place that works for everyone, and sends back a card.**
+**Snacxx is an iMessage agent, built on Photon Spectrum, that plans meals for you and your friends and already knows what each of you can eat. Tell it who you want to eat with and it texts each person, finds a time everyone can make and a place that fits everyone's diet, allergies, budget and location, and sends the whole group a card. Eating alone? Text "i'm hungry" and it picks a dish nearby that fits you.**
 
 Built at HackLanta '26.
 
@@ -30,21 +30,36 @@ Snacxx does both, inside iMessage.
 
 ## How it works
 
-<img width="2394" height="1332" alt="Image 10-11-26 at 6 20 AM" src="https://github.com/user-attachments/assets/e1fcc661-2845-4232-9089-bb0cedb12b42" />
+<img width="2394" height="1332" alt="Image 10-11-26 at 6 20 AM" src="https://github.com/user-attachments/assets/e1fcc661-2845-4232-9089-bb0cedb12b42" />
 
 
-Photon Spectrum delivers every iMessage to Snacxx and carries back everything it sends. Snacxx runs as one serverless function on AWS Lambda. Claude on Amazon Bedrock handles the conversation. The restaurant menus live in Amazon Aurora, and Amazon DynamoDB remembers chats, meals and group plans. Amazon Polly and Transcribe handle voice notes. A scheduler on Amazon EventBridge moves group plans along every minute, and an Apple Shortcut syncs steps and active calories from Apple Health.
+Every message you send in iMessage reaches Snacxx through Photon Spectrum, and everything Snacxx sends back goes out through Spectrum too: the polls, cards, voice notes, tapbacks and Find My requests. Snacxx itself is a single serverless function on AWS Lambda. When a message arrives it acknowledges it right away and then keeps working in the background, so it can wait minutes for you to tap a poll without anything timing out. Claude on Amazon Bedrock runs the conversation: it understands what you asked, decides which step comes next, and writes the reply in Snacxx's voice.
 
-**Built with:** Photon Spectrum · AWS Lambda · Amazon Bedrock (Claude) · Amazon Aurora · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · Amazon Polly · Amazon Transcribe · Apple Shortcuts · Apple Health · Find My · Apple Maps · TypeScript
+Behind that, the restaurant menu catalog is stored in Amazon S3 and loaded into Amazon Aurora, where Snacxx searches it and applies your allergy, diet and budget filters. Amazon DynamoDB is its memory: chats, restrictions, meals and group plans in progress. Amazon EventBridge wakes Snacxx every minute to move group plans forward while friends answer at their own pace. ElevenLabs handles voice in both directions, turning your voice notes into text and Snacxx's replies into speech. An Apple Shortcut on your iPhone connects Apple Health, writing the meals you log and sending back your steps and active calories.
+
+**Built with:** Photon Spectrum · AWS Lambda · Amazon Bedrock (Claude) · Amazon Aurora · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · ElevenLabs · Apple Shortcuts · Apple Health · Find My · Apple Maps · TypeScript
 
 ## Why it fits what Photon is looking for
 
-Snacxx is **hybrid intelligence** in a simple division of work: people make every choice, the AI handles the conversation, and fixed rules handle safety.
+Photon asks for hybrid intelligence, which means people and AI doing a task together. In Snacxx the split is simple: you make every decision, the AI runs the conversation, and fixed rules make sure every dish it suggests fits your allergies, your diet and your budget. Here is how Snacxx does each of the four things Photon says a great project does.
 
-- **Real human-in-the-loop collaboration.** Snacxx narrows the options and the person taps. It never guesses where you are and never sends directions before you say yes. In a group plan, the time most people picked wins, and anyone it doesn't suit is asked directly.
-- **Context-awareness that persists across time, channels, and teammates.** An allergy you mention once is remembered. A text, a tap, a voice note and a photo all feed the same conversation. A dinner plan lives across several people's private chats and keeps moving while they answer at their own pace.
-- **A delightful default that doesn't demand attention.** If you already share Find My, it asks nothing. It doesn't reply to every tap. In a group chat it stays quiet unless someone says its name. It texts like a friend: short, lowercase, no lists.
-- **Thoughtful safety and fallback behaviors that earn trust.** See the next two sections.
+**1. Real human-in-the-loop collaboration**
+
+Snacxx never decides for you. When you say you're hungry, it sends a poll with the three nearest places and you tap one. It then sends a poll with two dishes from that place and you tap one. It sends walking directions only after you say yes. In a group plan, each friend taps every time that works for them, the time most people chose wins, and anyone who didn't choose it is asked "does 7:00 work?" before the plan is final.
+
+**2. Context-awareness that persists across time, channels, and teammates**
+
+- **Across time:** if you tell Snacxx you're allergic to peanuts, it applies that to every later search without asking again. Every meal you log during the day adds up on the same Today's Pie card.
+- **Across channels:** you can text, tap a poll, send a voice note or send a food photo, and it is all one conversation. It also reads your steps and active calories from Apple Health.
+- **Across teammates:** when you plan dinner, Snacxx messages each friend in their own chat, combines everyone's allergies, diets, budgets and locations, and sends everyone the same final card.
+
+**3. A delightful default that doesn't demand attention**
+
+Snacxx asks as little of you as it can. If you already share your location on Find My, it never asks where you are. When you are ticking several options in a poll, it waits until you finish and doesn't reply to each tap. When you send a food photo, it reacts with 👀 so you know it saw it, without sending a "working on it" message. If you answer a group plan before your friends do, it tells you once to hang tight. It is also built to stay silent in a group chat unless someone says its name.
+
+**4. Thoughtful safety and fallback behaviors that earn trust**
+
+Your allergies, diet and budget are checked by fixed rules before the AI sees any dish, so the AI cannot recommend something that doesn't fit. If a menu doesn't say what is in a dish, Snacxx hides that dish from anyone with an allergy. In a group plan it never tells anyone whose allergy, diet or budget ruled a place out. It never tells you a dish is "safe," and every allergy reply ends with "double check with them before you order." When something doesn't work, it has a backup: if a poll can't be sent it asks the same question as a text, and if you are too far from the restaurants it knows, it tells you so and doesn't guess.
 
 ## How your data is collected and used
 
