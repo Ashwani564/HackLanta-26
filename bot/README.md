@@ -172,9 +172,10 @@ in a group it asks them to message it directly). Opened in a browser, that link 
 2. **Add the shortcut**: opens the prebuilt shortcut; they paste the link when Shortcuts asks.
 3. **Run it once** (the **Test It** button): runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
    The bot also texts them once to say it worked. The button then becomes **Sync Now**.
-4. **Sync automatically** (optional): Shortcuts → Automation → New → Message → Sender: the bot → Run Immediately →
-   Pie Sync. Automations can't be shared by link, so each person adds this once. From then on every text from the
-   bot runs the sync, which is right after they logged something and while the phone is unlocked.
+
+Nothing runs by itself after that: meals reach Health when the person taps **Sync Now** on the page or runs Pie Sync
+in Shortcuts. (The page doesn't walk people through a Message automation; anyone who wants it hands-free can add
+one in Shortcuts that runs Pie Sync when the bot texts.)
 
 **What the bot does with the numbers** (one-on-one chats only, never in a group): half of the day's active calories,
 up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or

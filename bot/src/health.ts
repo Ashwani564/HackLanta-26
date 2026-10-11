@@ -254,16 +254,12 @@ section{display:grid;grid-template-columns:28px minmax(0,1fr);padding:28px 0;bor
 section:last-of-type{border-bottom:1px solid var(--line)}
 .n{font-size:19px;line-height:1.26;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 h2{margin:0 0 6px;font-size:19px;line-height:1.26;font-weight:600;letter-spacing:-.012em}
-h2 span{margin-left:6px;font-weight:400;color:var(--muted)}
 p{margin:0;color:var(--muted);font-size:15px;line-height:1.47}
 .btn{display:block;width:100%;margin:16px 0 0;padding:14px 20px;border:1px solid var(--text);background:var(--text);color:var(--bg);font:inherit;font-size:17px;font-weight:500;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;-webkit-appearance:none;appearance:none}
 .btn:active{opacity:.7}
 .btn.done{background:transparent;color:var(--text)}
-.more{display:inline-block;margin-top:14px;color:var(--link);font-size:17px;text-decoration:none}
 input{display:block;width:100%;margin:12px 0 0;padding:12px;border:1px solid var(--line);background:var(--field);color:var(--text);font:13px/1.3 ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;-webkit-appearance:none;appearance:none}
 #copyhelp{margin-top:10px}
-ol{margin:14px 0 0;padding:0;list-style:none;border-top:1px solid var(--line)}
-ol li{padding:11px 0;border-bottom:1px solid var(--line);font-size:15px}
 #status{display:flex;align-items:baseline;gap:10px;margin-top:16px;font-size:15px;color:var(--muted)}
 #status::before{content:"";flex:none;width:8px;height:8px;background:var(--line)}
 #status.ok{color:var(--text)}
@@ -289,12 +285,6 @@ ${add}
 <p>Allow the connection and access to Health when asked, then return to this page.</p>
 <a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test It</a>
 <div id="status" role="status">Not connected</div>
-</div></section>
-<section><div class="n">4</div><div>
-<h2>Sync automatically<span>Optional</span></h2>
-<p>Add an automation so Health updates each time the bot texts you. Without it, tap Sync Now on this page anytime.</p>
-<ol><li>Open Shortcuts and tap Automation</li><li>Tap New Automation, then Message</li><li>For Sender, choose the bot</li><li>Select Run Immediately</li><li>Choose Pie Sync</li></ol>
-<a class="more" href="shortcuts://">Open Shortcuts ›</a>
 </div></section>
 <p class="foot">This link is private to you. Don't share it.</p>
 </main><script>

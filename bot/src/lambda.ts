@@ -171,9 +171,10 @@ function cardRoute(event: any): { token: string; jpg: boolean; base: string } | 
 async function serveCard(r: { token: string; jpg: boolean; base: string }) {
   const card = await loadCard(r.token);
   if (!card) return { statusCode: 404, headers: { "content-type": "text/plain" }, body: "this plan card has expired" };
-  const { cardPageHtml, meetupJpeg } = await import("./meetup-card.js");
+  const { cardPageHtml } = await import("./meetup-card.js");
+  const { meetupArtJpeg } = await import("./meetup-art.js");
   const cache = { "cache-control": "public, max-age=300" };
-  if (r.jpg) return { statusCode: 200, isBase64Encoded: true, headers: { "content-type": "image/jpeg", ...cache }, body: (await meetupJpeg(card)).toString("base64") };
+  if (r.jpg) return { statusCode: 200, isBase64Encoded: true, headers: { "content-type": "image/jpeg", ...cache }, body: (await meetupArtJpeg(card)).toString("base64") };
   const page = `${r.base}/card/${r.token}`;
   return { statusCode: 200, headers: { "content-type": "text/html; charset=utf-8", ...cache }, body: cardPageHtml(card, `${page}.jpg`, page) };
 }

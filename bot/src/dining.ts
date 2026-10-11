@@ -253,6 +253,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
       withReason(`at ${restaurantName} i'd go with the ${label(a)}`, a, ", "),
       withReason(`get the ${label(a)} at ${restaurantName}`, a, ". "),
       withReason(`${restaurantName}: the ${label(a)} for sure`, a, ", "),
+      withReason(`bro get the ${label(a)} at ${restaurantName}, easy W`, a, ", "),
     ]),
   ];
   if (b) {
@@ -260,6 +261,7 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
       pick([
         withReason(`or the ${label(b)} if you want something different`, b, ", "),
         withReason(`${label(b)} is good too`, b, ", "),
+        withReason(`the ${label(b)} is lowkey a W too`, b, ", "),
         withReason(`if not that, the ${label(b)}`, b, ". "),
       ]),
     );
@@ -381,7 +383,7 @@ export function dishPoll(restaurant: string, choices: readonly DishChoice[]): Po
 }
 
 /** Asked in plain text after they pick a dish (no poll). The map link is only sent if they say yes. */
-export const askDirections = () => pick(["want directions?", "need directions over there?", "want me to send the walk there?"]);
+export const askDirections = () => pick(["want directions?", "need directions over there?", "want me to send the walk there?", "want directions gang?"]);
 
 const askedKey = (spaceId: string) => `askdir#${spaceId}`;
 const ASKED_TTL = 30 * 60;

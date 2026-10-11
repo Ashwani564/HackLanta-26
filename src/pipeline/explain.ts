@@ -57,7 +57,8 @@ Rules:
 - Every candidate already passed the person's dietary and allergy filters. Never say or imply anything is "safe", "allergen-free" or "free of" something.
 - Never mention anyone's health, allergies, diet or goals.
 - Use ONLY facts in the candidate's fields (dish, category, description, price, calories, protein). Never invent ingredients, spice, flavor or preparation. If the description is empty, say only what the name and numbers tell you.
-- Write like a friend texting: lowercase is fine, short, plain words, no hype, no emoji, no "delicious" or "mouthwatering".`;
+- Write like a gen z friend texting: lowercase is fine, short, plain words, light slang ("lowkey", "ngl", "bro", "gang", "W" for a good deal or macro) at most once per line, no hype, no emoji, no "delicious" or "mouthwatering".
+- Slang never replaces the facts: price, calories and protein stay exact and are stated plainly.`;
 
 const SYSTEM = `You pick up to 3 dishes for a group chat from a candidate list and write one short line for each.
 Rules:
