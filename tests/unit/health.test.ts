@@ -184,7 +184,7 @@ test("opening the sync link in a browser shows the setup page, which never print
   const out = await handleHealthRequest("GET", `/health/${token}`);
   assert.equal(out.status, 200);
   assert.ok(out.html?.includes('href="https://www.icloud.com/shortcuts/abc123"'));
-  assert.ok(out.html?.includes("Run Immediately"));
+  assert.ok(!/automat/i.test(out.html ?? ""), "the page has no automation step");
   assert.ok(out.html?.includes('href="shortcuts://run-shortcut?name=Pie%20Sync"'), "Test it runs the shortcut by name");
   assert.ok(!/border-radius:(?!0)/.test(out.html ?? ""), "square corners only");
   assert.ok(!out.html?.includes(token), "the page reads the link from its own address instead");
