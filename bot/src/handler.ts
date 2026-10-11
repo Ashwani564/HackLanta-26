@@ -372,10 +372,21 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await message.reply("can't listen to voice notes right now, mind typing it?");
           return;
         }
-        const bytes = await message.content.read();
-        console.log(`  voice ${message.content.mimeType} ${bytes.length} bytes`);
-        const wav = await toWav(bytes);
-        const transcript = await transcribe(wav);
+        // Each step is named in the log if it fails, and a failure here is a polite "type it" instead of the generic crash reply.
+        let step = "reading the audio";
+        let transcript: string | undefined;
+        try {
+          const bytes = await message.content.read();
+          console.log(`  voice ${message.content.mimeType} ${bytes.length} bytes`);
+          step = "converting the audio (ffmpeg)";
+          const wav = await toWav(bytes);
+          step = "transcribing";
+          transcript = await transcribe(wav);
+        } catch (err) {
+          console.error(`  voice note failed while ${step}:`, err);
+          await message.reply("couldn't make out that voice note, mind typing it?");
+          return;
+        }
         if (!transcript) {
           await message.reply("didn't catch that, can you type it?");
           return;
