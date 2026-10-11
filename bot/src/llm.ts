@@ -302,9 +302,37 @@ export type ToolRunner = (name: string, args: Record<string, any>) => Promise<un
 const MAX_MESSAGES = 20;
 const HISTORY_TTL = 2 * 86400;
 const historyKey = (spaceId: string) => `chat#${spaceId}`;
-const loadHistory = async (spaceId: string) => (await getState<Message[]>(historyKey(spaceId))) ?? [];
+const hasContent = (m: Message) => (m.content ?? []).some((b) => (b.text !== undefined ? b.text.trim() !== "" : !!(b.toolUse || b.toolResult)));
+
+/**
+ * Bedrock rejects a conversation that has an empty message or two messages from the same side in a row, and it rejects
+ * it every time the chat is replayed. A model reply that came back empty used to be saved that way, which broke that chat
+ * for good ("the content field in the Message object at messages.15 is empty"). This repairs such a history: it drops
+ * empty messages, joins plain-text neighbours from the same side, and makes sure it starts with the user.
+ */
+export function cleanHistory(history: Message[]): Message[] {
+  const out: Message[] = [];
+  for (const m of history) {
+    if (!hasContent(m)) continue;
+    const content = (m.content ?? []).filter((b) => b.text === undefined || b.text.trim() !== "");
+    const prev = out[out.length - 1];
+    if (prev && prev.role === m.role) {
+      const plain = (blocks: ContentBlock[]) => blocks.every((b) => b.text !== undefined);
+      out[out.length - 1] =
+        plain(prev.content ?? []) && plain(content)
+          ? { role: m.role, content: [{ text: [...(prev.content ?? []), ...content].map((b) => b.text).join("\n\n") }] }
+          : { ...m, content };
+      continue;
+    }
+    out.push({ ...m, content });
+  }
+  while (out.length > 0 && out[0]!.role !== "user") out.shift();
+  return out;
+}
+
+const loadHistory = async (spaceId: string) => cleanHistory((await getState<Message[]>(historyKey(spaceId))) ?? []);
 // Bedrock content blocks may hold Uint8Array bytes; history only ever stores text/tool blocks, so JSON is safe.
-const saveHistory = (spaceId: string, history: Message[]) => putState(historyKey(spaceId), trim(history), HISTORY_TTL);
+const saveHistory = (spaceId: string, history: Message[]) => putState(historyKey(spaceId), trim(cleanHistory(history)), HISTORY_TTL);
 const MAX_TOOL_ROUNDS = 3;
 
 export async function chat(spaceId: string, text: string, runTool: ToolRunner, who?: { name: string }, planNote?: string): Promise<string> {

@@ -247,3 +247,20 @@ test("voice uses ElevenLabs as soon as the key is set, even if it arrives after 
     if (saved === undefined) delete process.env.ELEVENLABS_API_KEY; else process.env.ELEVENLABS_API_KEY = saved;
   }
 });
+
+test("a saved chat with an empty message is repaired instead of breaking every later turn", async () => {
+  const { cleanHistory } = await import("../../bot/src/llm.js");
+  const fixed = cleanHistory([
+    { role: "assistant", content: [{ text: "stray first message" }] },
+    { role: "user", content: [{ text: "hungry" }] },
+    { role: "assistant", content: [] }, // an empty model reply that was saved
+    { role: "assistant", content: [{ text: "where are you?" }] },
+    { role: "user", content: [{ text: "   " }] },
+    { role: "user", content: [{ text: "gsu" }] },
+  ] as any);
+  assert.deepEqual(fixed.map((m) => m.role), ["user", "assistant", "user"]); // starts with the user, alternates
+  assert.ok(fixed.every((m) => (m.content ?? []).every((b) => b.text === undefined || b.text.trim() !== "")));
+  assert.equal(fixed[1]!.content![0]!.text, "where are you?");
+  assert.equal(fixed[2]!.content![0]!.text, "gsu");
+  assert.deepEqual(cleanHistory([]), []);
+});
