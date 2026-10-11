@@ -30,7 +30,8 @@ Snacxx does both, inside iMessage.
 
 ## How it works
 
-<img width="1203" height="635" alt="Snacxx architecture: members text Snacxx in iMessage through Photon Spectrum, which reaches the Snacxx bot on AWS Lambda; the bot uses Amazon Bedrock, Aurora, DynamoDB, Polly and Transcribe, EventBridge and Secrets Manager, and syncs with Apple Health" src="https://github.com/user-attachments/assets/4cb18dd4-74a8-4010-9caa-9c3acace3c9c" />
+<img width="2394" height="1332" alt="Image 10-11-26 at 6 20 AM" src="https://github.com/user-attachments/assets/e1fcc661-2845-4232-9089-bb0cedb12b42" />
+
 
 Photon Spectrum delivers every iMessage to Snacxx and carries back everything it sends. Snacxx runs as one serverless function on AWS Lambda. Claude on Amazon Bedrock handles the conversation. The restaurant menus live in Amazon Aurora, and Amazon DynamoDB remembers chats, meals and group plans. Amazon Polly and Transcribe handle voice notes. A scheduler on Amazon EventBridge moves group plans along every minute, and an Apple Shortcut syncs steps and active calories from Apple Health.
 
