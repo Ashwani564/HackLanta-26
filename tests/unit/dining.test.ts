@@ -234,3 +234,16 @@ test("the default bot names include Snacxx", async () => {
   assert.ok(botNames().includes("snacxx"));
   assert.ok(mentionsBot("hey Snacxx where should we eat", botNames()));
 });
+
+test("voice uses ElevenLabs as soon as the key is set, even if it arrives after import", async () => {
+  const { elevenLabsEnabled } = await import("../../bot/src/voice.js");
+  const saved = process.env.ELEVENLABS_API_KEY;
+  try {
+    delete process.env.ELEVENLABS_API_KEY;
+    assert.equal(elevenLabsEnabled(), false);
+    process.env.ELEVENLABS_API_KEY = "test-key-not-real"; // e.g. loaded from Secrets Manager after startup
+    assert.equal(elevenLabsEnabled(), true);
+  } finally {
+    if (saved === undefined) delete process.env.ELEVENLABS_API_KEY; else process.env.ELEVENLABS_API_KEY = saved;
+  }
+});

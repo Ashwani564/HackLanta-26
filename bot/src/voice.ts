@@ -14,9 +14,21 @@ const run = promisify(execFile);
 const REGION = process.env.AWS_REGION ?? "us-east-2";
 const STT_RATE = 16000;
 
-const eleven = process.env.ELEVENLABS_API_KEY
-  ? new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
-  : undefined;
+// Built on first use, not at import: on Lambda the key arrives from Secrets Manager after this module loads.
+let elevenClient: ElevenLabsClient | undefined;
+let elevenKey: string | undefined;
+const eleven = (): ElevenLabsClient | undefined => {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) return undefined;
+  if (!elevenClient || elevenKey !== key) {
+    elevenClient = new ElevenLabsClient({ apiKey: key });
+    elevenKey = key;
+  }
+  return elevenClient;
+};
+/** True when voice goes through ElevenLabs (the key is set); otherwise Amazon Polly and Transcribe. */
+export const elevenLabsEnabled = () => !!process.env.ELEVENLABS_API_KEY;
+let warnedNoKey = false;
 // Built-in "Jessica". Library voices (e.g. Rachel 21m00Tcm4TlvDq8ikWAM) return 402 on the free tier.
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "cgSgspJ2msm6clMCkdW9";
 const EL_TTS_MODEL = process.env.ELEVENLABS_TTS_MODEL ?? "eleven_flash_v2_5";
@@ -46,18 +58,23 @@ const hasFfmpeg = () => {
 };
 export const canConvertAudio = () => hasFfmpeg() || process.platform === "darwin";
 
-/** Text -> AAC voice note (.m4a). ElevenLabs if configured, else Amazon Polly. */
+/** Text -> AAC voice note (.m4a). Spoken by ElevenLabs; Amazon Polly only if ElevenLabs isn't set up or the call fails. */
 export async function speak(text: string): Promise<{ audio: Buffer; duration: number }> {
   let mp3: Buffer | undefined;
-  if (eleven) {
+  const el = eleven();
+  if (el) {
     try {
       // Raw text only: ElevenLabs would read a tone instruction aloud. Tone comes from the voice.
       // mp3_44100_128 is the highest-quality format the free tier allows (PCM needs a paid plan).
-      const stream = await eleven.textToSpeech.convert(VOICE_ID, { text, modelId: EL_TTS_MODEL, outputFormat: "mp3_44100_128" });
+      const stream = await el.textToSpeech.convert(VOICE_ID, { text, modelId: EL_TTS_MODEL, outputFormat: "mp3_44100_128" });
       mp3 = Buffer.from(await new Response(stream).arrayBuffer());
+      console.log(`  voice: spoke ${text.length} chars with ElevenLabs (${EL_TTS_MODEL})`);
     } catch (err) {
       console.warn("  ElevenLabs TTS failed, falling back to Polly:", err);
     }
+  } else if (!warnedNoKey) {
+    warnedNoKey = true;
+    console.warn("  voice: ELEVENLABS_API_KEY isn't set, so speech uses Amazon Polly");
   }
   if (!mp3) {
     const res = await polly.send(new SynthesizeSpeechCommand({ Text: text, VoiceId: POLLY_VOICE, Engine: POLLY_ENGINE, OutputFormat: "mp3" }));
@@ -75,9 +92,10 @@ export async function toWav(input: Buffer): Promise<Buffer> {
 
 /** 16 kHz mono WAV (from toWav) -> transcript. ElevenLabs Scribe if configured, else Amazon Transcribe. */
 export async function transcribe(wavBuf: Buffer): Promise<string | undefined> {
-  if (eleven) {
+  const el = eleven();
+  if (el) {
     try {
-      const res = await eleven.speechToText.convert({ file: { data: wavBuf, filename: "voice.wav", contentType: "audio/wav" }, modelId: EL_STT_MODEL });
+      const res = await el.speechToText.convert({ file: { data: wavBuf, filename: "voice.wav", contentType: "audio/wav" }, modelId: EL_STT_MODEL });
       const text = res.text?.trim();
       if (text) return text;
     } catch (err) {
