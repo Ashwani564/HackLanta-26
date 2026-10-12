@@ -77,6 +77,8 @@ export async function speak(text: string): Promise<{ audio: Buffer; duration: nu
     console.warn("  voice: ELEVENLABS_API_KEY isn't set, so speech uses Amazon Polly");
   }
   if (!mp3) {
+    // No-AWS mode (npm run start:free): never fall back to Amazon; the caller replies in text instead.
+    if (process.env.LLM_PROVIDER === "free") throw new Error("ElevenLabs is unavailable and AWS is off");
     const res = await polly.send(new SynthesizeSpeechCommand({ Text: text, VoiceId: POLLY_VOICE, Engine: POLLY_ENGINE, OutputFormat: "mp3" }));
     mp3 = Buffer.from(await res.AudioStream!.transformToByteArray());
   }
@@ -102,6 +104,7 @@ export async function transcribe(wavBuf: Buffer): Promise<string | undefined> {
       console.warn("  Scribe STT failed, falling back to Amazon Transcribe:", err);
     }
   }
+  if (process.env.LLM_PROVIDER === "free") return undefined; // no-AWS mode: no Amazon Transcribe fallback
   return transcribeAws(pcmFromWav(wavBuf));
 }
 
