@@ -345,6 +345,11 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           await message.reply("i can only read photos for now");
           return;
         }
+        // Photo reads need a vision model on Bedrock; the free text model can't see images.
+        if (!process.env.BEDROCK_MODEL_ID && !process.env.BEDROCK_VISION_MODEL_ID) {
+          await message.reply("can't read photos rn, just tell me what you ate and i'll log it");
+          return;
+        }
         await message.react("👀");
         const bytes = await message.content.read();
         console.log(`  image ${name} ${mimeType} ${bytes.length} bytes`);

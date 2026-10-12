@@ -84,6 +84,7 @@ On Photon's Free/Pro plans the bot can only message people added as **users** (d
 ```bash
 npm run dev          # local streaming bot (needs this Mac awake), auto-restarts
 npm run terminal     # local chat UI in your terminal, no Photon needed
+npm run start:free   # no AWS at all: Photon streaming + a free LLM + local files (see "Running with no AWS")
 npm run deploy       # build + deploy the Lambda stack (infra/bot-lambda.yaml), then it prints the webhook URL
 npm run deploy -- --code    # code only, skip the stack
 npm run typecheck
@@ -222,3 +223,13 @@ bot/
 - **Coverage** is the 9 restaurants around GSU. Far from campus, the bot says so instead of guessing.
 - **Allergen data** is mostly estimated; the bot says so and always tells people to confirm with the restaurant.
 - The database pauses when idle; the first query after a pause takes ~15-20 s. The bot wakes it while you're tapping share.
+
+## Running with no AWS
+
+`npm run start:free` runs the whole bot on this machine with no AWS account. It reads `.env.free` (Photon project id and secret, optional `ELEVENLABS_API_KEY`, `LLM_PROVIDER=free`).
+
+- **Model**: a free OpenAI-compatible endpoint (`FREE_LLM_URL`, default Pollinations, no key; `FREE_LLM_MODEL`, default `openai-fast`). It is rate-limited, so calls are queued about 20 s apart and replies are slower. Food, plans and restaurant names are started in code; the model only picks meal logging, goals, the day card, dish picks and directions by itself.
+- **Menus**: `data/gsu_dishes.csv` in memory, ranked by word overlap, through the same hard allergy and diet filters.
+- **State**: saved to `.snacxx-state.json`; profiles are read from `users.local.json`. Both are gitignored.
+- **Off**: photo calorie reads (need a vision model) and Apple Health sync (needs a public URL). Voice uses ElevenLabs if its key is set.
+- Before starting it, run `npx tsx scripts/unwebhook.mts` so the Lambda stops answering too. `bash scripts/rewebhook.sh` points Photon back at the Lambda.

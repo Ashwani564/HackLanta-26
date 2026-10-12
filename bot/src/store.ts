@@ -1,10 +1,45 @@
 // Tiny key-value store for bot state (chat history, day logs, message dedupe).
-// DynamoDB when STATE_TABLE is set (Lambda); in-memory otherwise (local streaming bot).
+// DynamoDB when STATE_TABLE is set (Lambda); in memory, saved to a local file, otherwise (streaming bot, no AWS).
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { ConditionalCheckFailedException, DeleteItemCommand, DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
 const TABLE = process.env.STATE_TABLE;
 const ddb = TABLE ? new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-2" }) : undefined;
-const memory = new Map<string, { value: unknown; expires?: number }>();
+// Without DynamoDB, state lives in memory and is saved to a JSON file (STATE_FILE) so a restart keeps chats, meals
+// and plans. Writes are batched a moment after the last change.
+const STATE_FILE = process.env.STATE_FILE ?? ".snacxx-state.json";
+type Entry = { value: unknown; expires?: number };
+class SavedMap extends Map<string, Entry> {
+  private timer: NodeJS.Timeout | undefined;
+  private persist() {
+    if (ddb || this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      const live = [...this.entries()].filter(([, e]) => !e.expires || e.expires > now());
+      writeFileSync(`${STATE_FILE}.tmp`, JSON.stringify(live));
+      renameSync(`${STATE_FILE}.tmp`, STATE_FILE);
+    }, 500);
+    this.timer.unref?.();
+  }
+  override set(key: string, value: Entry) {
+    super.set(key, value);
+    this.persist();
+    return this;
+  }
+  override delete(key: string) {
+    const had = super.delete(key);
+    this.persist();
+    return had;
+  }
+}
+const memory = new SavedMap();
+if (!ddb && existsSync(STATE_FILE)) {
+  try {
+    for (const [k, e] of JSON.parse(readFileSync(STATE_FILE, "utf8")) as [string, Entry][]) Map.prototype.set.call(memory, k, e);
+  } catch (err) {
+    console.warn(`  couldn't read ${STATE_FILE}, starting fresh: ${(err as Error).message}`);
+  }
+}
 
 const now = () => Math.floor(Date.now() / 1000);
 

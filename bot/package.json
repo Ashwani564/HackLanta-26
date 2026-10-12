@@ -10,7 +10,8 @@
     "send": "tsx --env-file=.env scripts/send.ts",
     "vision": "cd vision-server && uv run uvicorn server:app --host 127.0.0.1 --port 8788",
     "deploy": "./scripts/deploy-lambda.sh",
-    "sim": "tsx --env-file=.env chat-sim.mts"
+    "sim": "tsx --env-file=.env chat-sim.mts",
+    "start:free": "tsx --env-file=.env.free src/main.ts"
   },
   "type": "module",
   "dependencies": {

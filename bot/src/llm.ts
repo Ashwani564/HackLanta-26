@@ -1,23 +1,53 @@
-// Chat brain on Amazon Bedrock (Claude, Converse API) with tool use.
-// Model comes from BEDROCK_MODEL_ID; AWS credentials come from the default profile.
+// Chat brain with tool use: Amazon Bedrock (Claude, Converse API) when BEDROCK_MODEL_ID is set, otherwise a free
+// OpenAI-compatible model (../../src/llm/converse.ts), so the bot can run with no AWS at all.
 import {
   BedrockRuntimeClient,
-  ConverseCommand,
   type ContentBlock,
   type Message,
   type Tool,
   type ToolInputSchema,
 } from "@aws-sdk/client-bedrock-runtime";
+import { converse, usingFreeLlm } from "../../src/llm/converse.js";
 import { SAFETY_CLAIM } from "../../src/pipeline/explain.js";
-import { namesRestaurant } from "./dining.js";
+import { namesRestaurant, restaurantNamed } from "./dining.js";
 import { getState, putState } from "./store.js";
 
 const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-2" });
-const modelId = () => {
-  const id = process.env.BEDROCK_MODEL_ID;
-  if (!id) throw new Error("BEDROCK_MODEL_ID is not set");
-  return id;
-};
+const modelId = () => process.env.BEDROCK_MODEL_ID ?? "free";
+const NO_REPLY_MARK = "NO_REPLY";
+
+/** "dinner tomorrow with ashwani, princy and ash at 7" -> plan_meal arguments, read in code (free models fumble this). */
+export function planArgs(text: string): { people: string[]; meal: string; day: string; time?: string } {
+  const t = text.toLowerCase();
+  const meal = /\b(breakfast|brunch)\b/.test(t) ? "breakfast" : /\blunch\b/.test(t) ? "lunch" : "dinner";
+  const day = /\b(tomorrow|tmrw|tmr|tmrrw)\b/.test(t) ? "tomorrow" : "today";
+  const time = /\b(?:at|around|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/.exec(t)?.[1]?.trim();
+  const withPart = /\b(?:with|w\/)\s+(.+)$/.exec(t)?.[1] ?? "";
+  const names = withPart.split(/[?.!]|\b(?:can|could|to|figure|at|around|by|for|so|please|pls|today|tomorrow|tonight|and see|then)\b/)[0] ?? "";
+  const NOT_NAMES = new Set(["me", "us", "my", "friends", "the", "boys", "girls", "guys", "them", "everyone"]);
+  const people = names
+    .split(/,|&|\band\b/)
+    .map((p) => p.trim().split(/\s+/)[0] ?? "")
+    .map((p) => p.replace(/[^a-z'-]/g, ""))
+    .filter((p) => p && !NOT_NAMES.has(p))
+    .slice(0, 6);
+  return { people, meal, day, ...(time && { time }) };
+}
+
+/**
+ * Tools a free model may pick by itself. Location, restaurants, plans and polls start only from code (forced above),
+ * because a small model calls them on plain small talk and would send someone a Find My card for "yo".
+ */
+const FREE_TOOLS = new Set(["log_meal", "show_day", "set_goals", "pick_dish", "get_directions", "connect_health", "send_voice_note"]);
+/** These send their own card or message; on the rate-limited free model, a short fixed line replaces a second call. */
+const FREE_DONE: Record<string, string> = { log_meal: "logged it", show_day: "here's your day", set_goals: "bet, updated your goals", pick_dish: NO_REPLY_MARK, get_directions: NO_REPLY_MARK, connect_health: NO_REPLY_MARK };
+
+/** Arguments for a tool the code forces, so a free model never has to make that call itself. */
+function forcedArgs(tool: string, text: string, planText?: string): Record<string, unknown> {
+  if (tool === "plan_meal") return planArgs(planText && !wantsPlan(text) ? planText : text);
+  if (tool === "restaurant_dishes") return { restaurant: restaurantNamed(text) ?? text, request: text, allergies: [], diets: [] };
+  return {};
+}
 
 const SYSTEM = `you're snacxx, a friend who knows the food spots around georgia state, texting over imessage. if anyone asks your name, it's snacxx. you're not an assistant and you never sound like one.
 
@@ -279,15 +309,15 @@ function sentTextFrom(turn: Message[]): string | undefined {
 /** Safety claims come from code, never the model. If one slips into a reply, rewrite it once, then fall back. */
 async function scrubSafetyClaims(reply: string): Promise<string> {
   if (!SAFETY_CLAIM.test(reply)) return reply;
+  // The free model is rate-limited; spend no extra call on a rewrite and use the plain fallback instead.
+  if (usingFreeLlm()) return "double check the ingredients with them before you order";
   try {
-    const res = await client.send(
-      new ConverseCommand({
-        modelId: modelId(),
-        system: [{ text: "Rewrite this text message so it does not say or imply any food, dish or restaurant is safe, allergen-free or free of anything. Keep the same casual tone, meaning and length. Output only the rewritten message." }],
-        messages: [{ role: "user", content: [{ text: reply }] }],
-        inferenceConfig: { maxTokens: 300, temperature: 0.3 },
-      }),
-    );
+    const res = await converse(client, {
+      modelId: modelId(),
+      system: [{ text: "Rewrite this text message so it does not say or imply any food, dish or restaurant is safe, allergen-free or free of anything. Keep the same casual tone, meaning and length. Output only the rewritten message." }],
+      messages: [{ role: "user", content: [{ text: reply }] }],
+      inferenceConfig: { maxTokens: 300, temperature: 0.3 },
+    });
     const out = (res.output?.message?.content ?? []).map((b) => b.text ?? "").join("").trim();
     if (out && !SAFETY_CLAIM.test(out)) return out;
   } catch (err) {
@@ -345,8 +375,17 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner, w
   const lastUser = await getState<string>(`plandraft#${spaceId}`);
   const forced = wantsPlan(text) || planFollowup(text, lastUser) ? "plan_meal" : wantsFood(text) ? "get_location" : namesRestaurant(text) ? "restaurant_dishes" : undefined;
   for (let round = 0; ; round++) {
-    const res = await client.send(
-      new ConverseCommand({
+    // A free model often ignores a forced tool, so the code makes that first call itself.
+    if (round === 0 && forced && usingFreeLlm()) {
+      const input = forcedArgs(forced, text, lastUser);
+      turn.push({ role: "assistant", content: [{ toolUse: { toolUseId: `forced-${Date.now()}`, name: forced, input: input as never } }] });
+      if (await runTools(turn, runTool)) {
+        await saveHistory(spaceId, [...history, ...turn]);
+        return NO_REPLY;
+      }
+      continue;
+    }
+    const res = await converse(client, {
         modelId: modelId(),
         system: [
           { text: SYSTEM },
@@ -358,13 +397,12 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner, w
         messages: [...history, ...turn],
         inferenceConfig: { maxTokens: 400, temperature: 0.7 },
         toolConfig: {
-          tools: TOOLS,
+          tools: usingFreeLlm() ? TOOLS.filter((t) => FREE_TOOLS.has(t.toolSpec!.name!) || t.toolSpec!.name === forced) : TOOLS,
           ...(round === 0 && forced && { toolChoice: { tool: { name: forced } } }),
         },
-      }),
-    );
+      });
     const message = res.output?.message;
-    if (!message) throw new Error("Bedrock returned no message");
+    if (!message) throw new Error("the model returned no message");
     turn.push(message);
 
     const calls = (message.content ?? []).filter((b) => b.toolUse);
@@ -383,33 +421,50 @@ export async function chat(spaceId: string, text: string, runTool: ToolRunner, w
       return reply;
     }
 
-    const results: ContentBlock[] = [];
-    const sentTexts: string[] = [];
-    for (const { toolUse } of calls) {
-      console.log(`  tool ${toolUse!.name} ${JSON.stringify(toolUse!.input ?? {})}`);
-      let result: unknown;
-      let status: "success" | "error" = "success";
-      try {
-        result = await runTool(toolUse!.name!, (toolUse!.input as Record<string, any>) ?? {});
-      } catch (err: any) {
-        console.error(`  tool ${toolUse!.name} failed:`, err);
-        result = { error: err?.message ?? String(err) };
-        status = "error";
-      }
-      const sent = (result as { sent_text?: unknown } | undefined)?.sent_text;
-      if (status === "success" && typeof sent === "string") sentTexts.push(sent);
-      results.push({ toolResult: { toolUseId: toolUse!.toolUseId, content: [{ json: { result } as any }], status } });
-    }
-    turn.push({ role: "user", content: results });
-
-    // Every tool this round already sent its message to the chat (dish picks, directions link...). The model has
-    // nothing left to add, and left to itself it sometimes repeats what was sent. Skip its follow-up entirely.
-    if (sentTexts.length === calls.length) {
-      turn.push({ role: "assistant", content: [{ text: sentTexts.join("\n\n") }] });
+    if (await runTools(turn, runTool)) {
       await saveHistory(spaceId, [...history, ...turn]);
       return NO_REPLY;
     }
+    const done = usingFreeLlm() ? calls.map((c) => FREE_DONE[c.toolUse!.name!]) : [];
+    if (done.length > 0 && done.every((d) => d !== undefined)) {
+      const reply = done.find((d) => d !== NO_REPLY) ?? NO_REPLY;
+      turn.push({ role: "assistant", content: [{ text: reply === NO_REPLY ? "ok" : reply }] });
+      await saveHistory(spaceId, [...history, ...turn]);
+      return reply;
+    }
   }
+}
+
+/**
+ * Run the tool calls in the last assistant message and append their results to the turn. Returns true when every
+ * tool already sent its message to the chat (dish picks, directions link...): the model has nothing left to add, and
+ * left to itself it sometimes repeats what was sent, so the caller skips its follow-up entirely.
+ */
+async function runTools(turn: Message[], runTool: ToolRunner): Promise<boolean> {
+  const calls = (turn[turn.length - 1]!.content ?? []).filter((b) => b.toolUse);
+  const results: ContentBlock[] = [];
+  const sentTexts: string[] = [];
+  for (const { toolUse } of calls) {
+    console.log(`  tool ${toolUse!.name} ${JSON.stringify(toolUse!.input ?? {})}`);
+    let result: unknown;
+    let status: "success" | "error" = "success";
+    try {
+      result = await runTool(toolUse!.name!, (toolUse!.input as Record<string, any>) ?? {});
+    } catch (err: any) {
+      console.error(`  tool ${toolUse!.name} failed:`, err);
+      result = { error: err?.message ?? String(err) };
+      status = "error";
+    }
+    const sent = (result as { sent_text?: unknown } | undefined)?.sent_text;
+    if (status === "success" && typeof sent === "string") sentTexts.push(sent);
+    results.push({ toolResult: { toolUseId: toolUse!.toolUseId, content: [{ json: { result } as any }], status } });
+  }
+  turn.push({ role: "user", content: results });
+  if (sentTexts.length === calls.length) {
+    turn.push({ role: "assistant", content: [{ text: sentTexts.join("\n\n") }] });
+    return true;
+  }
+  return false;
 }
 
 // Keep the last MAX_MESSAGES, starting on a plain user message so a tool call is

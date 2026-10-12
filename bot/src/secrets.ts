@@ -8,7 +8,8 @@ let loaded: Promise<void> | undefined;
 
 export function loadSecrets() {
   return (loaded ??= (async () => {
-    if (process.env.SPECTRUM_PROJECT_ID && process.env.SPECTRUM_PROJECT_SECRET && process.env.SPECTRUM_WEBHOOK_SECRET) return;
+    // Lambda needs the webhook secret too; the streaming bot (no AWS) only needs the project credentials, e.g. from .env.
+    if (process.env.SPECTRUM_PROJECT_ID && process.env.SPECTRUM_PROJECT_SECRET && (process.env.SPECTRUM_WEBHOOK_SECRET || !process.env.AWS_LAMBDA_FUNCTION_NAME)) return;
     const sm = new SecretsManagerClient({ region: process.env.AWS_REGION ?? "us-east-2" });
     const res = await sm.send(new GetSecretValueCommand({ SecretId: SECRET_ID }));
     const { projectId, projectSecret, webhookSecret, elevenlabsApiKey } = JSON.parse(res.SecretString ?? "{}");

@@ -8,6 +8,7 @@ import { ITEM_KINDS, type AllergenSource, type Candidate, type Constraints, type
 import { dietAcceptableTags } from "../pipeline/filter.js";
 import { ALLERGEN_KEYWORDS, GLUTEN_FREE_CLAIM, hasRealAllergy, keywordPatterns, termsPattern } from "../pipeline/allergens.js";
 import { EMBEDDING_DIMENSIONS } from "./embed.js";
+import { restaurantsLocal, usingLocalCatalog } from "./local.js";
 
 /**
  * pgvector access through the RDS Data API (HTTPS, no VPC or connection pool needed in Lambda).
@@ -391,6 +392,7 @@ export function buildRestaurantsSql(c: Constraints, kinds: readonly ItemKind[] =
 }
 
 export async function listRestaurants(c: Constraints, kinds: readonly ItemKind[] = []): Promise<RestaurantSummary[]> {
+  if (usingLocalCatalog()) return restaurantsLocal(c, kinds);
   const { sql, params } = buildRestaurantsSql(c, kinds);
   const rows = await query<{
     restaurant_id: string; restaurant_name: string; lat: number; lng: number; cuisine: string | null;
@@ -410,5 +412,6 @@ export async function listRestaurants(c: Constraints, kinds: readonly ItemKind[]
 
 /** Fire-and-forget: wakes a paused Serverless v2 cluster (~15-20 s) while the user is still busy sharing a location. */
 export function warmDb(): void {
+  if (usingLocalCatalog()) return;
   query("SELECT 1").catch(() => {});
 }

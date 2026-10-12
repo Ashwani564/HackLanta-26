@@ -24,3 +24,6 @@ graphify-out/
 
 # Claude plans
 .claude/plans/
+# Local no-AWS bot: saved state and user profiles (personal data)
+.snacxx-state.json*
+users.local.json

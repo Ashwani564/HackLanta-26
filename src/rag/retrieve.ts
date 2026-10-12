@@ -2,6 +2,7 @@ import type { Candidate, Constraints, ItemKind } from "../types.js";
 import { filterDishes, type DropReason } from "../pipeline/filter.js";
 import { embed } from "./embed.js";
 import { searchDishes } from "./store.js";
+import { searchLocal, usingLocalCatalog } from "./local.js";
 
 export interface RetrievalResult {
   candidates: Candidate[];
@@ -18,7 +19,9 @@ export async function retrieve(
   constraints: Constraints,
   opts: { limit?: number; kinds?: readonly ItemKind[]; restaurantId?: string } = {},
 ): Promise<RetrievalResult> {
-  const rows = await searchDishes(await embed(query), constraints, opts.limit ?? 40, opts.kinds ?? [], opts.restaurantId);
+  const rows = usingLocalCatalog()
+    ? searchLocal(query, constraints, opts.limit ?? 40, opts.kinds ?? [], opts.restaurantId)
+    : await searchDishes(await embed(query), constraints, opts.limit ?? 40, opts.kinds ?? [], opts.restaurantId);
   const { kept, dropped } = filterDishes(rows, constraints);
   return { candidates: kept, leaked: dropped };
 }

@@ -1,9 +1,22 @@
 // Saved profiles for known people (one item per phone number in USERS_TABLE). Read-only here.
 // Used in one-on-one chats only: a profile must never be read into a group chat's context.
+import { existsSync, readFileSync } from "node:fs";
 import { DynamoDBClient, GetItemCommand, ScanCommand, type AttributeValue } from "@aws-sdk/client-dynamodb";
 
 const TABLE = process.env.USERS_TABLE;
 const ddb = TABLE ? new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-2" }) : undefined;
+
+// Without USERS_TABLE, profiles come from a local JSON file (USERS_FILE): [{ phone, name, allergies, diets, goal?, budgetMaxUsd? }].
+const USERS_FILE = process.env.USERS_FILE ?? "users.local.json";
+function localUsers(): UserProfile[] {
+  if (!existsSync(USERS_FILE)) return [];
+  try {
+    return (JSON.parse(readFileSync(USERS_FILE, "utf8")) as UserProfile[]).map((u) => ({ ...u, allergies: u.allergies ?? [], diets: u.diets ?? [] }));
+  } catch (err) {
+    console.warn(`  couldn't read ${USERS_FILE}: ${(err as Error).message}`);
+    return [];
+  }
+}
 
 export interface UserProfile {
   phone: string;
@@ -32,7 +45,8 @@ function strings(v: AttributeValue | undefined): string[] {
 /** The saved profile for whoever is texting, or undefined (not in the table, no table, or a lookup error). */
 export async function getUser(senderId: string | undefined): Promise<UserProfile | undefined> {
   const phone = senderId ? normalizePhone(senderId) : undefined;
-  if (!ddb || !phone) return undefined;
+  if (!phone) return undefined;
+  if (!ddb) return localUsers().find((u) => normalizePhone(u.phone) === phone);
   try {
     const { Item } = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { phone: { S: phone } } }));
     if (!Item?.name?.S) return undefined;
@@ -54,7 +68,7 @@ export async function getUser(senderId: string | undefined): Promise<UserProfile
 
 /** Everyone with a saved profile (a handful of people, so a scan is fine). Names and phones only: nobody's health details leave this file. */
 export async function listProfiles(): Promise<{ name: string; phone: string }[]> {
-  if (!ddb) return [];
+  if (!ddb) return localUsers().map(({ name, phone }) => ({ name, phone }));
   const { Items } = await ddb.send(new ScanCommand({ TableName: TABLE, ProjectionExpression: "phone, #n", ExpressionAttributeNames: { "#n": "name" } }));
   return (Items ?? []).flatMap((i) => (i.phone?.S && i.name?.S ? [{ name: i.name.S, phone: i.phone.S }] : []));
 }
