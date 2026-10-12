@@ -2,6 +2,7 @@
 // Usage: tsx --env-file=.env chat-sim.mts <scenario>
 import { createHandler } from "./src/handler.ts";
 import { casualFoodReply } from "./src/vision.ts";
+import { setPublicBase } from "./src/health.ts";
 import { realPlanDeps } from "./src/plans.ts";
 
 const where: Record<string, any> = {
@@ -11,6 +12,14 @@ const where: Record<string, any> = {
 };
 const scenario = process.argv[2] ?? "basic";
 const loc = scenario === "far" ? where.far : scenario === "never" ? where.never : where.gsu;
+
+// The one-time Apple Health question is only asked in the "health" scenarios (tap yes) and "health-no", so every
+// other script starts the way it always has. Stand-ins make the bot willing to hand out setup steps.
+const healthTap = scenario === "health" ? "yes" : scenario === "health-no" ? "no" : undefined;
+if (healthTap) {
+  process.env.HEALTH_SHORTCUT_URL ??= "https://www.icloud.com/shortcuts/example";
+  setPublicBase("https://your-bot.example");
+}
 
 let n = 0;
 const space = (id: string) => ({
@@ -32,6 +41,12 @@ const polls = {
     const opt = typeof t === "number" ? rec.options[t] : rec.options.find((o: any) => o.value === t);
     console.log(`   👆 taps "${opt.label}"`);
     return opt.value;
+  },
+  // One look at a poll with no waiting; only the Apple Health question is read this way.
+  read: async (rec: any) => {
+    if (rec.kind !== "health" || !healthTap) return undefined;
+    console.log(`   👆 taps "${healthTap}"`);
+    return healthTap;
   },
 };
 // Meal planning: pretend people. Texts and polls are printed, taps are scripted; the places, the model and the
@@ -84,6 +99,7 @@ process.env.PLAN_WATCH_MS = "0";
 const { handle, tick } = createHandler({}, {
   plans: planDeps as any,
   polls,
+  askHealth: !!healthTap,
   locate: async (_c: string, _a: string, o: any) => {
     if (loc.status !== "sharing") await o.say("send me your location real quick so i can see what's around you");
     return loc;
@@ -116,6 +132,8 @@ const scripts: Record<string, string[]> = {
   chat: ["hey", "lol ok", "can you make a poll for where to eat tonight"],
   directions: ["i am hungry", "queen tea", "yeah", "thanks"],
   nodirections: ["hungry af", "india eats", "nah im good"],
+  health: ["hey", "i had a chicken burrito bowl for lunch"],
+  "health-no": ["hey", "lol ok"],
 };
 for (const m of scripts[scenario] ?? scripts.basic!) await say(m);
 

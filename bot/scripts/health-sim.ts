@@ -1,6 +1,7 @@
 // Usage: tsx --env-file=.env scripts/health-sim.ts
 // The whole Apple Health loop with no phone: the real bot on Bedrock, state in memory, and this script
-// playing the iPhone shortcut (pull the meals, ack them, send numbers back). Nobody is messaged.
+// playing the person (tapping yes on the one-time "connect apple health?" poll) and their iPhone shortcut
+// (pull the meals, ack them, send numbers back). Nobody is messaged.
 import { createHandler } from "../src/handler.js";
 import { handleHealthRequest, setPublicBase, syncTokenFor } from "../src/health.js";
 
@@ -14,7 +15,20 @@ const space = {
   send: async (t: any) => console.log(`   📱 ${typeof t === "string" ? t : "[today's pie card]"}`),
   responding: async (fn: () => Promise<any>) => fn(),
 };
-const { handle } = createHandler({});
+// The first message gets the Apple Health question; the tap on its poll is "yes".
+const polls = {
+  send: async (chatGuid: string, spec: any) => {
+    console.log(`   📊 poll "${spec.title}"  [ ${spec.options.map((o: any) => o.label).join("  |  ")} ]`);
+    return { ...spec, guid: "sim", chatGuid, optionIds: {} };
+  },
+  wait: async () => undefined,
+  read: async (rec: any) => {
+    if (rec.kind !== "health") return undefined;
+    console.log(`   👆 taps "yes"`);
+    return "yes";
+  },
+};
+const { handle } = createHandler({}, { polls });
 let n = 0;
 const say = async (text: string) => {
   console.log(`\n🙋 ${text}`);
@@ -23,8 +37,8 @@ const say = async (text: string) => {
 const phone = async (method: string, route: string, body?: unknown) =>
   (await handleHealthRequest(method, `/health/${await syncTokenFor(me)}/${route}`, body === undefined ? "" : JSON.stringify(body))).body as any;
 
+await say("hey");
 await say("i had a chicken burrito bowl for lunch");
-await say("can you connect apple health");
 
 console.log("\n📲 the shortcut runs. it would write these to Health:");
 const { meals } = await phone("GET", "pending");

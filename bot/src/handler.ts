@@ -8,9 +8,10 @@ import { downloadMessageAttachment } from "./photon.js";
 import { getDay, logMeal, setGoals, summary } from "./day.js";
 import { sendDayCard } from "./card.js";
 import { connectHealth, dayGoals, getMetrics, healthSummary } from "./health.js";
+import { ASK_TITLE, answerAsk, askStage, closeAsk, movedOn, offer, tapped, tickAsks, type AskIo } from "./health-ask.js";
 import { SAM_URL, analyzeFood, annotateFood, casualFoodReply } from "./vision.js";
 import {
-  askDirections, markAskedDirections, takeDirectionsAnswer, chooseDish, clearRestrictions, constraintsFor, directionsLink, dishPoll,
+  askDirections, markAskedDirections, takeDirectionsAnswer, chooseDish, clearRestrictions, constraintsFor, directionsAnswer as yesOrNo, directionsLink, dishPoll,
   mergeRestrictions, nearbyRestaurants, restaurantDishes, restaurantNamed, restaurantPoll, type Origin,
 } from "./dining.js";
 import { latestPollKey, pollKey, realPolls, type PollApi, type PollKind, type PollRecord, type PollSpec } from "./polls.js";
@@ -29,12 +30,40 @@ const WAIT_MS = 150_000;
 const CHAIN_MS = Number(process.env.POLL_CHAIN_MS ?? 270_000);
 
 /** Build the per-message handler. `app` is the Spectrum instance (needed to open DMs for invites). */
-export function createHandler(app: any, deps: { locate?: typeof realLocate; polls?: PollApi; plans?: PlanDeps } = {}) {
+export function createHandler(
+  app: any,
+  deps: {
+    locate?: typeof realLocate;
+    polls?: PollApi;
+    plans?: PlanDeps;
+    /** false: never send the one-time Apple Health question (health-ask.ts). */
+    askHealth?: boolean;
+    /** Text one person from outside a conversation with them. */
+    dm?: (phone: string, text: string) => Promise<unknown>;
+  } = {},
+) {
   const locate = deps.locate ?? realLocate;
   const pollApi = deps.polls ?? realPolls;
   const planDeps = deps.plans ?? realPlanDeps(app, sendDm, sendDmImage, sendDmCard, openDm);
-  // `tick` is the every-minute check that moves "schedule dinner with…" plans along (see plans.ts).
-  return { handle, invite, tick: () => tickPlans(planDeps, Number(process.env.PLAN_TICK_SPAN_MS ?? 50_000)) };
+  const askHealth = deps.askHealth ?? true;
+  const dm = deps.dm ?? ((phone: string, text: string) => sendDm(app, phone, text));
+  const dmBubbles = async (phone: string, text: string) => {
+    for (const [i, part] of text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).entries()) {
+      if (i > 0) await sleep(900);
+      await dm(phone, part);
+    }
+  };
+  // `tick` is the every-minute check: it notices a late tap on the Apple Health question (health-ask.ts), then moves
+  // "schedule dinner with…" plans along (plans.ts). The first must never hold up the second.
+  const tick = async () => {
+    if (askHealth) {
+      await tickAsks((phone) => ({ polls: pollApi, say: (text) => dmBubbles(phone, text), remember })).catch((err) =>
+        console.warn(`  health ask check failed: ${(err as Error).message}`),
+      );
+    }
+    await tickPlans(planDeps, Number(process.env.PLAN_TICK_SPAN_MS ?? 50_000));
+  };
+  return { handle, invite, tick };
 
   async function handle(space: any, message: any) {
   // Read receipts and typing signals are noise for now.
@@ -77,6 +106,28 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
       if (i > 0) await sp.responding(() => sleep(Math.min(2200, Math.max(700, part.length * 16))));
       await sp.send(part);
     }
+  };
+
+  const askIo: AskIo = { polls: pollApi, say: (text) => sendBubbles(space, text), remember };
+  /**
+   * The one-time Apple Health question (health-ask.ts): a new person gets it before `said`, their first message, is
+   * answered. One-on-one only. False means this message needs nothing more: it was their yes or no, or they've
+   * texted something newer that is being answered instead.
+   */
+  const healthGate = async (said: string): Promise<boolean> => {
+    if (!askHealth || isGroupChat(space.id) || !message.sender) return true;
+    const who = message.sender.id;
+    const stage = await askStage(who);
+    if (stage === "new") return offer(who, space.id, said, askIo);
+    if (stage === "holding") {
+      const answer = yesOrNo(said);
+      if (answer) {
+        await answerAsk(who, space.id, answer, said, askIo);
+        return false;
+      }
+      await movedOn(who);
+    }
+    return true;
   };
 
   /**
@@ -157,6 +208,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         await sendChosenDish(out);
         return { said: out.text };
       }
+      case "health":
+        return {}; // answered by health-ask.ts, never through this chain
     }
   };
 
@@ -235,6 +288,8 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         const out = await connectHealth(message.sender.id, isGroupChat(space.id));
         if ("error" in out) return out;
         await sendBubbles(space, out.text);
+        // They have their link now, so a tap on the one-time question has nothing left to do.
+        if (askHealth && !isGroupChat(space.id)) await closeAsk(message.sender.id);
         return { sent: true, sent_text: out.said };
       }
       case "get_location": {
@@ -323,6 +378,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
         }
         // Someone being asked about a meal plan may answer by typing instead of tapping.
         if (message.platform === "imessage" && message.sender && !isGroupChat(space.id) && (await handlePlanReply(planDeps, message.sender.id, text))) return;
+        if (!(await healthGate(text))) return;
         // A bare "sure"/"no" right after "want directions?" is answered here; the model has misread it as a new search.
         const answer = await takeDirectionsAnswer(space.id, text);
         if (answer === "yes") {
@@ -402,6 +458,7 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           return;
         }
         console.log(`  transcript: ${transcript}`);
+        if (!(await healthGate(transcript))) return;
         await respond(`${VOICE_PROMPT} "${transcript}"`);
         break;
       }
@@ -419,9 +476,15 @@ export function createHandler(app: any, deps: { locate?: typeof realLocate; poll
           console.log("  vote is on a meal-plan poll; moving the plan along");
           if (await onPlanVote(planDeps, space.id.replace(/^any;-;/, ""))) return;
         }
+        const label = c.option?.title ?? c.title;
+        // A tap on the Apple Health question, should Photon forward one (health-ask.ts reads taps itself).
+        if (askHealth && !isGroupChat(space.id) && message.sender && c.poll?.title === ASK_TITLE) {
+          const answer = yesOrNo(String(label ?? ""));
+          if (answer) await answerAsk(message.sender.id, space.id, answer, tapped(answer), askIo);
+          return;
+        }
         const guid = await getState<string>(latestPollKey(space.id));
         const rec = guid ? await getState<PollRecord>(pollKey(guid)) : undefined;
-        const label = c.option?.title ?? c.title;
         const value = rec?.options.find((o) => o.label === label)?.value;
         if (!rec || value === undefined) {
           console.log("  vote isn't on a poll we're waiting on; ignoring");

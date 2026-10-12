@@ -193,6 +193,8 @@ Apple Health has no cloud API. A Shortcut on the person's iPhone calls `/health/
 - **Health data never touches allergen or diet filtering.** It only adjusts the "calories left" talk and the soft goal ranking. Allergies stay chat-collected.
 - **1:1 only.** Health numbers are never used or mentioned in a group chat (rule 2).
 - **The sync link is a credential.** Send it only in a 1:1 chat; never log it, never put it in chat history or a model prompt.
+- **New people are asked once** (`bot/src/health-ask.ts`): on their first 1:1 message, before it is answered, a text plus a yes/no poll "connect apple health?". Yes sends the setup texts; either way their message is then answered (it waits at most `HEALTH_ASK_HOLD_MS`, 45 s). A late tap is read by the every-minute tick for 6 hours. Never in a group, never while `HEALTH_SHORTCUT_URL` is unset.
+- **"Every meal syncs" depends on step 4 of the setup page**, a Message automation the person adds in Shortcuts (run Pie Sync when the bot texts). The server cannot push to Health; without that step meals sync only when they run the shortcut, and only the same day.
 
 ## Environment / secrets
 

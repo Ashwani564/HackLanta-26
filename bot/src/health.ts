@@ -55,6 +55,15 @@ const shortcutLink = () => {
   return url?.startsWith("https://") ? url : undefined;
 };
 
+/** Where sync links point, or undefined while Health sync is off (no published shortcut, or our own address isn't known yet). */
+const syncBase = async () => (shortcutLink() ? publicBase ?? (await baseUrl()) : undefined);
+
+/** Can the bot hand out setup steps right now? */
+export const healthSyncReady = async () => !!(await syncBase());
+
+/** Have they been given a sync link before (so they've already been through "connect apple health")? */
+export const hasSyncLink = async (userId: string) => !!(await getState<string>(userKey(keyFor(userId))));
+
 /**
  * The setup texts, one paragraph per bubble. The person's sync link doubles as their setup page (opened in
  * a browser it shows the steps), so that one link, in a bubble of its own, is all they need.
@@ -78,8 +87,8 @@ export async function connectHealth(userId: string, inGroup: boolean): Promise<{
     const text = "dm me and i'll set that up, the link is just for you";
     return { text, said: text };
   }
-  const base = publicBase ?? (await baseUrl());
-  if (!shortcutLink() || !base) return { error: "apple health sync isn't set up on this bot yet" };
+  const base = await syncBase();
+  if (!base) return { error: "apple health sync isn't set up on this bot yet" };
   return {
     text: connectText(`${base}/health/${await syncTokenFor(userId)}`),
     said: "(sent the apple health setup steps and their private sync link)",
@@ -226,12 +235,15 @@ export function healthReply(out: HealthResponse): { status: number; headers: Rec
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** Sent by the bot the first time someone's phone syncs. */
-export const CONNECTED_TEXT = "ok you're connected. whatever you log with me shows up in apple health now";
+export const CONNECTED_TEXT = "ok you're connected. do step 4 on that page too and every meal you log with me goes into apple health by itself";
 
 /**
  * The page a person sees when they open their sync link in a browser. The link itself is filled in by the
  * page from its own address, so the server never has to know (or print) where it is being served from.
  * The buttons run the shortcut by name, so the shared shortcut has to stay named "Pie Sync".
+ * The last step is a Message automation (iOS 17 or later): the phone runs Pie Sync whenever the bot texts, and the
+ * bot always texts right after a meal is logged, so every meal reaches Health without a tap. An automation can't
+ * be shared by link the way a shortcut can, which is why the person sets that one up by hand.
  * Plain system type, square corners, hairlines, and it follows the phone's light or dark setting.
  */
 export function setupPage(shortcutUrl: string | undefined): string {
@@ -255,6 +267,7 @@ section:last-of-type{border-bottom:1px solid var(--line)}
 .n{font-size:19px;line-height:1.26;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 h2{margin:0 0 6px;font-size:19px;line-height:1.26;font-weight:600;letter-spacing:-.012em}
 p{margin:0;color:var(--muted);font-size:15px;line-height:1.47}
+p+p{margin-top:8px}
 .btn{display:block;width:100%;margin:16px 0 0;padding:14px 20px;border:1px solid var(--text);background:var(--text);color:var(--bg);font:inherit;font-size:17px;font-weight:500;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;-webkit-appearance:none;appearance:none}
 .btn:active{opacity:.7}
 .btn.done{background:transparent;color:var(--text)}
@@ -285,6 +298,13 @@ ${add}
 <p>Allow the connection and access to Health when asked, then return to this page.</p>
 <a class="btn" id="run" href="shortcuts://run-shortcut?name=Pie%20Sync">Test It</a>
 <div id="status" role="status">Not connected</div>
+</div></section>
+<section><div class="n">4</div><div>
+<h2>Sync every meal automatically</h2>
+<p>In Shortcuts, open Automation, tap +, then choose Message.</p>
+<p>For Sender, enter the number that texted you this link. Choose Run Immediately, tap Next, and pick Pie Sync.</p>
+<p>Each meal you log is then written to Health when the reply arrives. Without this step, meals sync when you tap Sync Now.</p>
+<a class="btn" href="shortcuts://">Open Shortcuts</a>
 </div></section>
 <p class="foot">This link is private to you. Don't share it.</p>
 </main><script>

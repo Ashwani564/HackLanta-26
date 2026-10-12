@@ -163,8 +163,18 @@ HEALTH_SHORTCUT_URL=https://www.icloud.com/shortcuts/... npm run deploy    # sto
 
 Locally, put `HEALTH_SHORTCUT_URL` and `PUBLIC_URL` (the address phones reach this machine on) in `.env`.
 
-**In chat**: "connect apple health" makes the bot text the person their private sync link (one-on-one chats only;
-in a group it asks them to message it directly). Opened in a browser, that link is a setup page:
+**The first-time question** (`src/health-ask.ts`): the first time someone texts the bot one-on-one, before their
+message is answered, it asks "want to connect your apple health?" and sends a yes/no poll. Yes gets the setup
+texts below; no gets one line and is never asked again. Their message waits up to 45 seconds for the tap
+(`HEALTH_ASK_HOLD_MS`) and is then answered either way; a typed "yes"/"no" in that window counts too. Photon
+doesn't forward poll taps, so a later tap is picked up by the every-minute check, for 6 hours after the ask.
+Nobody is asked in a group chat, while `HEALTH_SHORTCUT_URL` is unset, or if they already have a sync link.
+Someone invited by contact card is asked when they first reply, not in the invite. Try it with no phone:
+`npx tsx --env-file=.env chat-sim.mts health` (or `health-no`).
+
+**In chat**: "connect apple health" (or a yes to the question above) makes the bot text the person their private
+sync link (one-on-one chats only; in a group it asks them to message it directly). Opened in a browser, that link
+is a setup page:
 
 1. **Copy your link**: its own step, and the button says whether the copy worked. (Copying inside the Add tap
    failed silently on a real iPhone; the wrong thing then gets pasted and the shortcut calls the wrong address,
@@ -172,10 +182,15 @@ in a group it asks them to message it directly). Opened in a browser, that link 
 2. **Add the shortcut**: opens the prebuilt shortcut; they paste the link when Shortcuts asks.
 3. **Run it once** (the **Test It** button): runs the shortcut, they approve the connection and Health access, and the page turns to "Connected".
    The bot also texts them once to say it worked. The button then becomes **Sync Now**.
+4. **Sync every meal automatically**: a Message automation in Shortcuts (Automation → + → Message → Sender: the
+   number the bot texts them from → Run Immediately → Pie Sync; iOS 17 or later). The phone then runs Pie Sync
+   whenever the bot texts, and the bot always texts right after it logs a meal (the pie card, then a line), so
+   every new meal is written to Health with no tap.
 
-Nothing runs by itself after that: meals reach Health when the person taps **Sync Now** on the page or runs Pie Sync
-in Shortcuts. (The page doesn't walk people through a Message automation; anyone who wants it hands-free can add
-one in Shortcuts that runs Pie Sync when the bot texts.)
+Step 4 is what makes it hands-free, and the person has to do it themselves: a shortcut can be shared by link, an
+automation can't, and Health has no way for a server to write to it. Without it meals still reach Health, but only
+when they tap **Sync Now** on the page or run Pie Sync. Either way only today's meals are sent, so a meal that
+isn't synced the day it's logged never is.
 
 **What the bot does with the numbers** (one-on-one chats only, never in a group): half of the day's active calories,
 up to 500, count as extra room when it talks about what's left, and when the day is running low on calories or
@@ -206,6 +221,7 @@ bot/
 │   ├── voice.ts      # Polly + Transcribe (ElevenLabs optional)
 │   ├── day.ts, card.ts, day-art.ts, plan.ts, web.ts   # calorie tracking cards and dashboard
 │   ├── health.ts     # Apple Health sync routes: sync tokens, pending meals, acks, numbers from Health
+│   ├── health-ask.ts # the one-time "connect apple health?" yes/no poll a new person gets
 │   ├── store.ts      # DynamoDB in Lambda, in-memory locally
 │   ├── secrets.ts    # Photon credentials from Secrets Manager
 │   └── invite.ts     # contact-card invites, STOP opt-out

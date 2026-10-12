@@ -4,7 +4,8 @@
 import { im } from "./photon.js";
 import { getState, putState } from "./store.js";
 
-export type PollKind = "restaurant" | "dish";
+// "health" is the one-time Apple Health question; health-ask.ts sends it and reads its answer.
+export type PollKind = "restaurant" | "dish" | "health";
 export interface PollSpec {
   kind: PollKind;
   /** Sent as a text right before the poll (e.g. naming the options), so the poll matches what was just said. */
@@ -27,6 +28,8 @@ export interface PollApi {
   send(chatGuid: string, spec: PollSpec): Promise<PollRecord>;
   /** Resolves with the chosen value, or undefined on timeout / if a newer poll replaced this one. */
   wait(rec: PollRecord, opts: { timeoutMs: number }): Promise<string | undefined>;
+  /** One look, no waiting: the chosen value if they've tapped. */
+  read?(rec: PollRecord): Promise<string | undefined>;
 }
 
 const TTL = 6 * 3600;
@@ -83,4 +86,4 @@ export async function readVotes(rec: PollRecord): Promise<string[]> {
   return rec.options.map((o) => o.value).filter((v) => ticked.has(v));
 }
 
-export const realPolls: PollApi = { send, wait };
+export const realPolls: PollApi = { send, wait, read: readVote };

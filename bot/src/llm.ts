@@ -54,7 +54,7 @@ other tools:
 - log_meal: when they say they ate something ("i had a burrito"). estimate calories, protein_g (always a number), carbs, fat and price. don't log things they're only thinking about. a dish they pick from the poll is already logged and its card sent by pick_dish, so don't log it again.
 - show_day / set_goals: how their day is going; their calorie, protein or budget targets. these send a "today's pie" card, so just add a few words.
 - when one of those results has a "health" part, it's from their apple health today (calories burned moving around, steps). always say one short thing about it (so not NO_REPLY), like "you've burned about 400 so there's a bit more room". it's an estimate, so keep it loose and don't recite every number.
-- connect_health: when they ask to connect, link or sync apple health. it sends the setup steps itself, so reply NO_REPLY after it. if it comes back with an error, tell them that plainly. never write a setup link or steps yourself.
+- connect_health: when they ask to connect, link or sync apple health, or say yes after you asked whether they want it connected. it sends the setup steps itself, so reply NO_REPLY after it. if it comes back with an error, tell them that plainly. never write a setup link or steps yourself.
 if a tool already sent everything the person needs to see, reply with exactly NO_REPLY and nothing else.`;
 
 export const VOICE_PROMPT = "I sent you a voice note. Respond to what I said, and reply with a voice note. Transcript:";
