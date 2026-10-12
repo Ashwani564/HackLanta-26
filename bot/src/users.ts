@@ -6,12 +6,14 @@ import { DynamoDBClient, GetItemCommand, ScanCommand, type AttributeValue } from
 const TABLE = process.env.USERS_TABLE;
 const ddb = TABLE ? new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-2" }) : undefined;
 
-// Without USERS_TABLE, profiles come from a local JSON file (USERS_FILE): [{ phone, name, allergies, diets, goal?, budgetMaxUsd? }].
+// Without USERS_TABLE, profiles come from USERS_JSON or a local JSON file (USERS_FILE): [{ phone, name, allergies, diets, goal?, budgetMaxUsd? }].
 const USERS_FILE = process.env.USERS_FILE ?? "users.local.json";
 function localUsers(): UserProfile[] {
-  if (!existsSync(USERS_FILE)) return [];
+  // USERS_JSON (the same list, as a setting) is for hosts where files don't survive a restart, like Render.
+  const raw = process.env.USERS_JSON ?? (existsSync(USERS_FILE) ? readFileSync(USERS_FILE, "utf8") : undefined);
+  if (!raw) return [];
   try {
-    return (JSON.parse(readFileSync(USERS_FILE, "utf8")) as UserProfile[]).map((u) => ({ ...u, allergies: u.allergies ?? [], diets: u.diets ?? [] }));
+    return (JSON.parse(raw) as UserProfile[]).map((u) => ({ ...u, allergies: u.allergies ?? [], diets: u.diets ?? [] }));
   } catch (err) {
     console.warn(`  couldn't read ${USERS_FILE}: ${(err as Error).message}`);
     return [];

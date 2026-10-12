@@ -233,3 +233,14 @@ bot/
 - **State**: saved to `.snacxx-state.json`; profiles are read from `users.local.json`. Both are gitignored.
 - **Off**: photo calorie reads (need a vision model) and Apple Health sync (needs a public URL). Voice uses ElevenLabs if its key is set.
 - Before starting it, run `npx tsx scripts/unwebhook.mts` so the Lambda stops answering too. `bash scripts/rewebhook.sh` points Photon back at the Lambda.
+
+## Running on Render (free, always on, no AWS)
+
+The repo has a `Dockerfile` and `render.yaml` for a free Render web service running the no-AWS bot.
+
+1. On render.com: New > Web Service > Public Git Repository: `https://github.com/Ashwani564/HackLanta-26`, branch `ashar/plan-meals`. Render finds the Dockerfile. Pick the Free instance type.
+2. Environment: `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, `ELEVENLABS_API_KEY` (optional), `USERS_JSON` (the contents of `users.local.json` on one line), `LLM_PROVIDER=free`. Health check path: `/healthz`.
+3. A free instance sleeps after ~15 minutes without web traffic, which would drop the Photon connection. Add a free uptime monitor (e.g. UptimeRobot) that requests `https://<your-service>.onrender.com/healthz` every 5 minutes.
+4. Run `npx tsx scripts/unwebhook.mts` once so the Lambda stops answering, and don't run the bot on your laptop at the same time (both would reply).
+
+Files on a free instance are wiped on every restart or deploy, so chat history, meal logs and plans reset then; profiles come from `USERS_JSON`.

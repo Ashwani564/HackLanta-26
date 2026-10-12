@@ -1,0 +1,23 @@
+# Render blueprint for Snacxx with no AWS (see bot/README.md, "Running on Render").
+# Secrets have no value here: Render asks for them when the blueprint is created.
+services:
+  - type: web
+    name: snacxx
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    branch: ashar/plan-meals
+    envVars:
+      - key: SPECTRUM_PROJECT_ID
+        sync: false
+      - key: SPECTRUM_PROJECT_SECRET
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: USERS_JSON
+        sync: false
+      - key: LLM_PROVIDER
+        value: free
+      - key: BOT_TIMEZONE
+        value: America/New_York

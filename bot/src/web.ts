@@ -8,6 +8,11 @@ const PORT = Number(process.env.PORT ?? 8787);
 
 export function startWeb() {
   createServer(async (req, res) => {
+    // For the host's health check and the uptime pinger that keeps a free instance awake.
+    if (req.url === "/healthz") {
+      res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+      return;
+    }
     if (isHealthPath(req.url ?? "")) {
       const ctx = { accept: req.headers.accept, userAgent: req.headers["user-agent"] };
       const out = healthReply(await handleHealthRequest(req.method ?? "GET", req.url!, await readBody(req), ctx));

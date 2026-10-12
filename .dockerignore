@@ -1,0 +1,13 @@
+**/node_modules
+**/.env*
+**/users.local.json
+**/.snacxx-state.json*
+bot/dist
+bot/vision-server
+brag-output
+demo-video
+devpost-images
+docs
+graphify-out
+data/cache
+.git
