@@ -31,6 +31,10 @@ import { TIME_ZONE } from "./day.js";
 import { getUser, listProfiles } from "./users.js";
 import { publishCard } from "./cards.js";
 import { servesMeal } from "../../src/data/cuisines.js";
+import { anywhereEnabled, osmNearby } from "./anywhere.js";
+
+/** Farther than this from every catalog restaurant, a plan looks for places on OpenStreetMap instead. */
+const FAR_FROM_CATALOG_KM = 3;
 
 export type Meal = "dinner" | "lunch" | "breakfast";
 export type Day = "today" | "tomorrow";
@@ -1014,6 +1018,20 @@ export function realPlanDeps(
           return { r, km: origins.length ? Math.max(...km) : i * 0.001, total: km.reduce((a, b) => a + b, 0) };
         })
         .sort((a, b) => a.km - b.km || a.total - b.total);
+      // Nobody is near the restaurants we have menus for: real places around the group from OpenStreetMap, fairest first.
+      if (anywhereEnabled() && origins.length > 0 && (ranked[0]?.km ?? Infinity) > FAR_FROM_CATALOG_KM) {
+        const center = { lat: origins.reduce((a, o) => a + o.lat, 0) / origins.length, lng: origins.reduce((a, o) => a + o.lng, 0) / origins.length };
+        const osm = await osmNearby(center, 2500, 20).catch(() => []);
+        if (osm.length > 0) {
+          return osm
+            .map((p) => {
+              const km = origins.map((o) => haversineKm(o, p));
+              return { p, worst: Math.max(...km), total: km.reduce((a, b) => a + b, 0) };
+            })
+            .sort((a, b) => a.worst - b.worst || a.total - b.total)
+            .map(({ p, worst }) => ({ name: p.name, lat: p.lat, lng: p.lng, walkMin: Math.max(1, Math.round(worst / WALK_KM_PER_MIN)) }));
+        }
+      }
       // Every place that has something for the whole group, fairest first (not just three).
       return ranked.map(({ r, km }) => ({
         name: r.restaurantName,

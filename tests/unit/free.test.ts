@@ -57,3 +57,15 @@ test("menus without a database: the local catalog keeps the hard allergy filter"
   const spots = restaurantsLocal(none, ["meal"]);
   assert.ok(spots.length >= 5 && spots.every((r) => r.dishCount > 0));
 });
+
+test("dishes at a place with no menu always say they're typical picks with estimated numbers", async () => {
+  const { composeEstimatedDishMessage } = await import("../../bot/src/dining.js");
+  const msg = composeEstimatedDishMessage("Tick Tock Diner", [
+    { label: "cheeseburger (~$9)", name: "cheeseburger", calories: 650, proteinG: 35 },
+    { label: "club sandwich", name: "club sandwich", calories: null, proteinG: null },
+  ]);
+  assert.match(msg, /Tick Tock Diner i'd go with the cheeseburger \(~\$9\), about 650 cal, 35g protein/);
+  assert.match(msg, /or the club sandwich\n/);
+  assert.match(msg, /don't have their actual menu.*estimates.*check ingredients/s);
+  assert.doesNotMatch(msg, /\bsafe\b/);
+});

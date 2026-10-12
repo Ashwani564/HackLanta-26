@@ -1,6 +1,7 @@
 // The "what should I eat" flow: nearby restaurants -> two dishes at the one they pick.
 // Allergen and diet filtering all happens in the backend code (src/rag, src/pipeline); the model
 // only chooses among dishes that already passed, and this file writes the final dish message.
+import { aiDishes, anywhereEnabled, osmNearby } from "./anywhere.js";
 import { allergenConfidence, hasRealAllergy } from "../../src/pipeline/allergens.js";
 import { haversineKm } from "../../src/pipeline/filter.js";
 import { pickDishes, type Pick } from "../../src/pipeline/explain.js";
@@ -100,6 +101,10 @@ interface NearbyEntry {
   fullName: string;
   walkMin: number;
   km: number;
+  /** Set for places found on OpenStreetMap (outside the menu catalog): where it is and what kind of food. */
+  lat?: number;
+  lng?: number;
+  cuisine?: string[];
 }
 
 interface Destination {
@@ -152,6 +157,25 @@ export async function nearbyRestaurants(spaceId: string, origin: Origin, constra
     .map(({ r, km }) => ({ r, km, walkMin: Math.max(1, Math.round(km / WALK_KM_PER_MIN)) }));
 
   const close = pickVaried(ranked.filter((x) => x.km <= NEARBY_KM), MAX_SPOTS);
+  // Nowhere near the restaurants we have menus for: real places around them from OpenStreetMap instead.
+  if (close.length === 0 && anywhereEnabled()) {
+    const osm = await osmNearby(origin).catch(() => []);
+    if (osm.length > 0) {
+      const spots = pickVaried(osm.map((p) => ({ r: p, km: p.km })), MAX_SPOTS).map(({ r, km }) => ({ r, km, walkMin: Math.max(1, Math.round(km / WALK_KM_PER_MIN)) }));
+      await putState(
+        nearKey(spaceId),
+        spots.map(({ r, km, walkMin }): NearbyEntry => ({ id: r.id, name: r.name, fullName: r.name, km, walkMin, lat: r.lat, lng: r.lng, cuisine: r.cuisine })),
+        3 * 3600,
+      );
+      return {
+        restaurants: spots.map(({ r, km, walkMin }) => ({ name: r.name, walk_minutes: walkMin, miles_away: +(km * 0.621371).toFixed(1), cuisine: r.cuisine, typical_meal_price: undefined as string | undefined })),
+        far_away: false,
+        none_match_restrictions: false,
+        // No menus for these: the model must not claim to know what they serve.
+        menus_unverified: true,
+      };
+    }
+  }
   const shown = close.length > 0 ? close : ranked.slice(0, 2);
   const farAway = close.length === 0 && shown.length > 0;
 
@@ -171,6 +195,7 @@ export async function nearbyRestaurants(spaceId: string, origin: Origin, constra
     // Nothing within walking range of where they actually are. The model must say that plainly.
     far_away: farAway,
     none_match_restrictions: rows.length === 0,
+    menus_unverified: false,
   };
 }
 
@@ -278,6 +303,17 @@ export function composeDishMessage(restaurantName: string, picks: readonly Pick[
   return lines.join("\n\n");
 }
 
+/** Two typical dishes at a place we have no menu for. Always says the picks and numbers are estimates. */
+export function composeEstimatedDishMessage(restaurantName: string, choices: readonly DishChoice[]): string {
+  const facts = (c: DishChoice) => [c.calories !== null && `about ${c.calories} cal`, c.proteinG !== null && `${c.proteinG}g protein`].filter(Boolean).join(", ");
+  const [a, b] = choices;
+  if (!a) return "";
+  const lines = [`at ${restaurantName} i'd go with the ${a.label}${facts(a) ? `, ${facts(a)}` : ""}`];
+  if (b) lines.push(`or the ${b.label}${facts(b) ? `, ${facts(b)}` : ""}`);
+  lines.push("i don't have their actual menu, so those are typical picks and the numbers are estimates. check ingredients with them before you order");
+  return lines.join("\n\n");
+}
+
 const destKey = (spaceId: string) => `dest#${spaceId}`;
 const dishesKey = (spaceId: string) => `dishes#${spaceId}`;
 const REPEAT_WINDOW_MS = 5 * 60_000;
@@ -317,6 +353,17 @@ export async function restaurantDishes(
   // picks used to make the model call this again and repeat the whole message.)
   const recent = await getState<{ restaurant: string; at?: number }>(dishesKey(spaceId));
   if (!request && recent?.restaurant === place.name && recent.at && Date.now() - recent.at < REPEAT_WINDOW_MS) return { repeat: true };
+
+  // A place from OpenStreetMap: no menu, so two typical dishes with estimated numbers, said plainly.
+  if (place.id.startsWith("osm-")) {
+    const entry = ((await getState<NearbyEntry[]>(nearKey(spaceId))) ?? []).find((o) => o.id === place.id);
+    const dishes = await aiDishes({ name: place.name, cuisine: entry?.cuisine ?? [] }, request, constraints);
+    if (dishes.length === 0) return { error: `couldn't come up with dishes at ${place.name}` };
+    if (entry?.lat !== undefined && entry.lng !== undefined) await putState(destKey(spaceId), { name: place.name, lat: entry.lat, lng: entry.lng } satisfies Destination, 3 * 3600);
+    const choices = dishes.map((d): DishChoice => ({ label: `${d.name}${d.priceUsd !== null ? ` (~$${d.priceUsd})` : ""}`, name: d.name, calories: d.calories, proteinG: d.proteinG, carbsG: d.carbsG, fatG: d.fatG, priceUsd: d.priceUsd }));
+    await putState(dishesKey(spaceId), { restaurant: place.name, choices, at: Date.now() }, 3 * 3600);
+    return { text: composeEstimatedDishMessage(place.name, choices), choices, restaurant: place.name };
+  }
 
   const parsed = request ? await parseMessage(request) : EMPTY_PARSE;
   const query = parsed.positiveQuery || request || "popular main dish";
