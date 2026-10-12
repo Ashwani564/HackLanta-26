@@ -10,6 +10,11 @@ export function loadSecrets() {
   return (loaded ??= (async () => {
     // Lambda needs the webhook secret too; the streaming bot (no AWS) only needs the project credentials, e.g. from .env.
     if (process.env.SPECTRUM_PROJECT_ID && process.env.SPECTRUM_PROJECT_SECRET && (process.env.SPECTRUM_WEBHOOK_SECRET || !process.env.AWS_LAMBDA_FUNCTION_NAME)) return;
+    // Outside Lambda (Render, a laptop) there is no AWS to fall back to: say exactly which setting is missing.
+    if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      const missing = ["SPECTRUM_PROJECT_ID", "SPECTRUM_PROJECT_SECRET"].filter((k) => !process.env[k]);
+      throw new Error(`Set ${missing.join(" and ")} in the environment (Render: Environment tab) to connect to Photon.`);
+    }
     const sm = new SecretsManagerClient({ region: process.env.AWS_REGION ?? "us-east-2" });
     const res = await sm.send(new GetSecretValueCommand({ SecretId: SECRET_ID }));
     const { projectId, projectSecret, webhookSecret, elevenlabsApiKey } = JSON.parse(res.SecretString ?? "{}");

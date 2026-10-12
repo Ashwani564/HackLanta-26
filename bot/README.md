@@ -231,15 +231,16 @@ bot/
 - **Model**: a free OpenAI-compatible endpoint (`FREE_LLM_URL`, default Pollinations, no key; `FREE_LLM_MODEL`, default `openai-fast`). It is rate-limited, so calls are queued about 20 s apart and replies are slower. Food, plans and restaurant names are started in code; the model only picks meal logging, goals, the day card, dish picks and directions by itself.
 - **Menus**: `data/gsu_dishes.csv` in memory, ranked by word overlap, through the same hard allergy and diet filters.
 - **State**: saved to `.snacxx-state.json`; profiles are read from `users.local.json`. Both are gitignored.
-- **Off**: photo calorie reads (need a vision model) and Apple Health sync (needs a public URL). Voice uses ElevenLabs if its key is set.
+- **Voice**: offline (`VOICE_ENGINE=local`): espeak-ng or macOS `say` speaks, whisper.cpp transcribes (`WHISPER_MODEL`, a ggml model file).
+- **Off**: photo calorie reads (need a vision model) and Apple Health sync (needs a public URL).
 - Before starting it, run `npx tsx scripts/unwebhook.mts` so the Lambda stops answering too. `bash scripts/rewebhook.sh` points Photon back at the Lambda.
 
 ## Running on Render (free, always on, no AWS)
 
-The repo has a `Dockerfile` and `render.yaml` for a free Render web service running the no-AWS bot.
+The repo has a `Dockerfile` and `render.yaml` for a free Render web service running the no-AWS bot. Voice is free and offline there: espeak-ng speaks, whisper.cpp (tiny English model) transcribes; no ElevenLabs.
 
 1. On render.com: New > Web Service > Public Git Repository: `https://github.com/Ashwani564/HackLanta-26`, branch `ashar/plan-meals`. Render finds the Dockerfile. Pick the Free instance type.
-2. Environment: `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, `ELEVENLABS_API_KEY` (optional), `USERS_JSON` (the contents of `users.local.json` on one line), `LLM_PROVIDER=free`. Health check path: `/healthz`.
+2. Environment: `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, `USERS_JSON` (the contents of `users.local.json` on one line), `LLM_PROVIDER=free`. Health check path: `/healthz`.
 3. A free instance sleeps after ~15 minutes without web traffic, which would drop the Photon connection. Add a free uptime monitor (e.g. UptimeRobot) that requests `https://<your-service>.onrender.com/healthz` every 5 minutes.
 4. Run `npx tsx scripts/unwebhook.mts` once so the Lambda stops answering, and don't run the bot on your laptop at the same time (both would reply).
 

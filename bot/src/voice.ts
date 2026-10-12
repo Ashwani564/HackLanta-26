@@ -1,5 +1,6 @@
-// Voice notes. ElevenLabs (Scribe STT + TTS) when ELEVENLABS_API_KEY is set; otherwise AWS:
-// Amazon Polly for speech and Amazon Transcribe (streaming) for transcripts.
+// Voice notes. VOICE_ENGINE=local (the default with LLM_PROVIDER=free): free and offline, espeak-ng (or macOS `say`)
+// for speech and whisper.cpp for transcripts. Otherwise ElevenLabs (Scribe STT + TTS) when ELEVENLABS_API_KEY is set,
+// and AWS (Amazon Polly, Amazon Transcribe) as the fallback.
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -17,9 +18,11 @@ const STT_RATE = 16000;
 // Built on first use, not at import: on Lambda the key arrives from Secrets Manager after this module loads.
 let elevenClient: ElevenLabsClient | undefined;
 let elevenKey: string | undefined;
+/** Free, offline voice: no account, no key, no network. */
+export const localVoice = () => (process.env.VOICE_ENGINE ?? (process.env.LLM_PROVIDER === "free" ? "local" : "")) === "local";
 const eleven = (): ElevenLabsClient | undefined => {
   const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) return undefined;
+  if (!key || localVoice()) return undefined;
   if (!elevenClient || elevenKey !== key) {
     elevenClient = new ElevenLabsClient({ apiKey: key });
     elevenKey = key;
@@ -27,7 +30,7 @@ const eleven = (): ElevenLabsClient | undefined => {
   return elevenClient;
 };
 /** True when voice goes through ElevenLabs (the key is set); otherwise Amazon Polly and Transcribe. */
-export const elevenLabsEnabled = () => !!process.env.ELEVENLABS_API_KEY;
+export const elevenLabsEnabled = () => !!process.env.ELEVENLABS_API_KEY && !localVoice();
 let warnedNoKey = false;
 // Built-in "Jessica". Library voices (e.g. Rachel 21m00Tcm4TlvDq8ikWAM) return 402 on the free tier.
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "cgSgspJ2msm6clMCkdW9";
@@ -60,6 +63,11 @@ export const canConvertAudio = () => hasFfmpeg() || process.platform === "darwin
 
 /** Text -> AAC voice note (.m4a). Spoken by ElevenLabs; Amazon Polly only if ElevenLabs isn't set up or the call fails. */
 export async function speak(text: string): Promise<{ audio: Buffer; duration: number }> {
+  if (localVoice()) {
+    const { audio: raw, name } = await speakLocal(text);
+    const audio = await convert(raw, name, { ff: ["-c:a", "aac", "-b:a", "64k", "-ac", "1"], af: ["-f", "m4af", "-d", "aac"] }, "out.m4a");
+    return { audio, duration: await probeDuration(raw, name, text) };
+  }
   let mp3: Buffer | undefined;
   const el = eleven();
   if (el) {
@@ -94,6 +102,7 @@ export async function toWav(input: Buffer): Promise<Buffer> {
 
 /** 16 kHz mono WAV (from toWav) -> transcript. ElevenLabs Scribe if configured, else Amazon Transcribe. */
 export async function transcribe(wavBuf: Buffer): Promise<string | undefined> {
+  if (localVoice()) return transcribeLocal(wavBuf);
   const el = eleven();
   if (el) {
     try {
@@ -122,6 +131,50 @@ async function transcribeAws(pcm: Buffer): Promise<string | undefined> {
     }
   }
   return parts.join(" ").trim() || undefined;
+}
+
+const ESPEAK = process.env.ESPEAK_PATH ?? "espeak-ng";
+const WHISPER = process.env.WHISPER_BIN ?? "whisper-cli";
+const WHISPER_MODEL = process.env.WHISPER_MODEL ?? "/opt/whisper/ggml-tiny.en.bin";
+
+/** Offline text-to-speech: espeak-ng where it's installed (the Docker image), macOS `say` on a Mac. */
+async function speakLocal(text: string): Promise<{ audio: Buffer; name: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "voice-"));
+  try {
+    try {
+      const out = join(dir, "speech.wav");
+      await run(ESPEAK, ["-v", process.env.ESPEAK_VOICE ?? "en-us", "-s", "165", "-w", out, text]);
+      console.log(`  voice: spoke ${text.length} chars with espeak-ng`);
+      return { audio: await readFile(out), name: "speech.wav" };
+    } catch (err) {
+      if (process.platform !== "darwin") throw err;
+      const out = join(dir, "speech.aiff");
+      await run("say", ["-o", out, text]);
+      console.log(`  voice: spoke ${text.length} chars with macOS say`);
+      return { audio: await readFile(out), name: "speech.aiff" };
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** Offline speech-to-text with whisper.cpp (16 kHz mono WAV in). Undefined if it isn't installed. */
+async function transcribeLocal(wavBuf: Buffer): Promise<string | undefined> {
+  if (!existsSync(WHISPER_MODEL)) {
+    console.warn(`  voice: no whisper model at ${WHISPER_MODEL}, can't transcribe`);
+    return undefined;
+  }
+  const dir = await mkdtemp(join(tmpdir(), "voice-"));
+  try {
+    const path = join(dir, "in.wav");
+    await writeFile(path, wavBuf);
+    const { stdout } = await run(WHISPER, ["-m", WHISPER_MODEL, "-f", path, "-l", "en", "-nt", "-np", "-t", process.env.WHISPER_THREADS ?? "2"], { timeout: 120_000 });
+    const text = stdout.replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    console.log(`  voice: transcribed with whisper.cpp: "${text}"`);
+    return text || undefined;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /** Strip the WAV header: find the "data" chunk and return the raw PCM after it. */

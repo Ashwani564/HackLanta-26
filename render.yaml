@@ -13,8 +13,6 @@ services:
         sync: false
       - key: SPECTRUM_PROJECT_SECRET
         sync: false
-      - key: ELEVENLABS_API_KEY
-        sync: false
       - key: USERS_JSON
         sync: false
       - key: LLM_PROVIDER
