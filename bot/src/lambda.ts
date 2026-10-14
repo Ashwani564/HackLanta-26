@@ -44,6 +44,7 @@ import { loadCard, rememberBaseUrl } from "./cards.js";
 export const handler = async (event: any, context: { functionName: string }) => {
   if (event?.kind === "delivery") return processDelivery(event as Delivery);
   if (event?.kind === "selftest") return selfTest(event.audioBase64);
+  if (event?.kind === "dbtest") return dbTest();
   // `aws lambda invoke --payload '{"kind":"cardtest"}'`: renders a sample plan card inside Lambda, to check the fonts are found.
   if (event?.kind === "cardtest") {
     const { meetupJpeg, useBundledFonts } = await import("./meetup-card.js");
@@ -160,6 +161,40 @@ async function selfTest(audioBase64?: string) {
   const { audio, duration } = await speak("Try the beef rice at Queen Tea. It's about six hundred fifty calories.");
   const transcript = await transcribe(await toWav(audio));
   return { ok: !!transcript, voiceEngine: engine, voiceNoteBytes: audio.length, durationSeconds: +duration.toFixed(1), transcript, ms: Date.now() - started };
+}
+
+/**
+ * `aws lambda invoke --payload '{"kind":"dbtest"}'`: proves this function reaches its menu database (with the allergen
+ * filter), its state table, the embedding model and Claude. Nothing is sent to Photon and nothing is written.
+ */
+async function dbTest() {
+  const { countDishes, listRestaurants } = await import("../../src/rag/store.js");
+  const { retrieve } = await import("../../src/rag/retrieve.js");
+  const { getState } = await import("./store.js");
+  const { BedrockRuntimeClient, ConverseCommand } = await import("@aws-sdk/client-bedrock-runtime");
+  const none = { allergens: [], unmappedAllergyTerms: [], diets: [], excludeTerms: [] };
+  const out: Record<string, unknown> = {};
+  const step = async (name: string, fn: () => Promise<Record<string, unknown>>) => {
+    const t = Date.now();
+    try {
+      out[name] = { ok: true, ...(await fn()), ms: Date.now() - t };
+    } catch (err) {
+      out[name] = { ok: false, error: `${(err as Error).name}: ${(err as Error).message}`.slice(0, 300), ms: Date.now() - t };
+    }
+  };
+  await step("aurora", async () => ({ dishes: await countDishes(), restaurants: (await listRestaurants(none)).length }));
+  await step("search", async () => {
+    // A peanut allergy asking for peanut noodles: every candidate must come back without peanuts.
+    const r = await retrieve("spicy peanut noodles", { ...none, allergens: ["peanuts"] }, { limit: 10 });
+    return { candidates: r.candidates.length, withPeanuts: r.candidates.filter((c) => c.allergens.includes("peanuts")).length, leaked: Object.values(r.leaked).reduce((a, b) => a + b, 0) };
+  });
+  await step("dynamodb", async () => ({ activePlans: ((await getState<string[]>("plans#active")) ?? []).length }));
+  await step("claude", async () => {
+    const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-2" });
+    const res = await bedrock.send(new ConverseCommand({ modelId: process.env.BEDROCK_MODEL_ID, messages: [{ role: "user", content: [{ text: "Reply with the single word: ok" }] }], inferenceConfig: { maxTokens: 5 } }));
+    return { model: process.env.BEDROCK_MODEL_ID, reply: res.output?.message?.content?.[0]?.text ?? "" };
+  });
+  return { ok: Object.values(out).every((s) => (s as { ok: boolean }).ok), ...out };
 }
 
 // ---------- plan card pages: GET /card/<token> (the page) and /card/<token>.jpg (its picture) ----------
