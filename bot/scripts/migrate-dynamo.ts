@@ -31,7 +31,8 @@ const [usersFrom, usersTo] = need("users").split(":");
  * - planlock#, msg#, voted#: short-lived locks and dedupe markers.
  */
 const SKIP = /^(health|baseurl$|planlock#|msg#|voted#)/;
-const kind = (pk: string) => pk.split("#")[0]!;
+/** What kind of record this is, for the counts. Never the key itself: a users key is a phone number. */
+const kind = (key: string, value: string) => (key === "pk" ? value.split("#")[0]! : "profile");
 
 /** The account a table lives in, read from its ARN (arn:aws:dynamodb:<region>:<account>:table/<name>). */
 async function accountOf(ddb: DynamoDBClient, table: string) {
@@ -62,7 +63,7 @@ async function copyTable(label: string, src: DynamoDBClient, dst: DynamoDBClient
   const live = all.filter((i) => !i.ttl?.N || Number(i.ttl.N) > now);
   const chosen = live.filter(keep);
   console.log(`\n${label}: ${all.length} in source, ${all.length - live.length} already expired, ${live.length - chosen.length} skipped on purpose, ${chosen.length} to copy`);
-  for (const [k, n] of tally(chosen.map((i) => kind(i[key]!.S!)))) console.log(`  ${k.padEnd(12)} ${n}`);
+  for (const [k, n] of tally(chosen.map((i) => kind(key, i[key]!.S!)))) console.log(`  ${k.padEnd(12)} ${n}`);
   if (!APPLY) return { chosen, conflicts: 0 };
 
   let copied = 0, same = 0, conflicts = 0;
