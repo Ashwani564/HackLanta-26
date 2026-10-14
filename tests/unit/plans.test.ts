@@ -302,6 +302,74 @@ test("the minute-by-minute check moves plans along and ignores finished ones", a
   assert.equal((await w.plan(planId)).stage, "done");
 });
 
+test("someone asked to move who never answers their place poll is dropped, and the plan still finishes", async () => {
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  w.tap(ASHWANI, "what time", "6:30 PM");
+  w.tap(PRINCY, "what time", "7:30 PM");
+  await go(w, planId); // Princy has to be asked about 6:30, but her place poll is open and she never answers it
+  w.tap(ASHWANI, "where", "India Eats");
+  w.tap(ASHAR, "where", "India Eats");
+  await go(w, planId);
+  assert.equal((await w.plan(planId)).stage, "confirm");
+  w.clock += 6 * 60_000; // past the 5 minutes everyone gets to answer
+  await go(w, planId);
+  assert.equal((await w.plan(planId)).stage, "done");
+  const told = w.textsTo(ASHAR).at(-1)!;
+  assert.match(told, /India Eats at 6:30 PM today\. Ashwani is in/);
+  assert.match(told, /Princy didn't answer/);
+  assert.equal(w.polls.filter((p) => p.title.startsWith("does 6:30 PM work?")).length, 0);
+});
+
+test("an organizer who has to confirm a moved time but never answers their place poll doesn't hold the plan forever", async () => {
+  const w = world();
+  const { planId } = (await start(w, ["ashwani", "princy"], { anytime: false, time: "7" })) as { planId: string };
+  w.tap(ASHWANI, "what time", "8:00 PM");
+  w.tap(PRINCY, "what time", "8:00 PM");
+  await go(w, planId);
+  w.tap(ASHWANI, "where", "Queen Tea");
+  w.tap(PRINCY, "where", "Queen Tea");
+  await go(w, planId);
+  // Ashar asked for 7 and the others can only do 8, so he has to be asked. His place poll is still open.
+  assert.equal((await w.plan(planId)).stage, "confirm");
+  assert.equal(w.polls.filter((p) => p.title.startsWith("does 8:00 PM work?")).length, 0);
+  w.clock += 6 * 60_000; // his place poll runs out of time, so the question about 8:00 can go out
+  await go(w, planId);
+  assert.equal(w.polls.filter((p) => p.phone === ASHAR && p.title.startsWith("does 8:00 PM work?")).length, 1);
+  w.clock += 6 * 60_000; // and that one runs out too
+  await go(w, planId);
+  assert.equal((await w.plan(planId)).stage, "done");
+  assert.match(w.textsTo(ASHAR).at(-1)!, /Queen Tea at 8:00 PM today/);
+});
+
+test("a plan that can never finish is dropped after three hours, so the every-minute check stops working on it", async () => {
+  await putState("plans#active", [], 60);
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  w.tap(ASHWANI, "what time", "7:00 PM");
+  w.tap(PRINCY, "what time", "7:00 PM");
+  await tick(w);
+  for (const who of [ASHWANI, PRINCY, ASHAR]) w.tap(who, "where", "Queen Tea");
+  w.deps.places = async () => { throw new Error("database is down"); }; // the last check before choosing can never pass
+  await tick(w);
+  assert.equal((await w.plan(planId)).stage, "place");
+  assert.deepEqual(await getState("plans#active"), [planId]);
+  w.clock += 180 * 60_000;
+  await tickPlans(w.deps);
+  assert.deepEqual(await getState("plans#active"), []);
+  assert.equal((await w.plan(planId)).stage, "failed");
+  assert.match(w.textsTo(ASHAR).at(-1)!, /couldn't get dinner sorted: ran out of time/);
+});
+
+test("a plan that is over but still on the active list is taken off it instead of being checked every minute", async () => {
+  await putState("plans#active", [], 60);
+  const w = world();
+  const { planId } = (await start(w)) as { planId: string };
+  await putState(`plan#${planId}`, { ...(await w.plan(planId)), stage: "failed" }, 60);
+  await tickPlans(w.deps);
+  assert.deepEqual(await getState("plans#active"), []);
+});
+
 test("chooseTime: the time the most people ticked, ties to the middle of everything picked", () => {
   const slots = ["17:30", "18:00", "18:30", "19:00", "19:30"];
   assert.deepEqual(chooseTime(slots, [["18:30", "19:00"], ["19:00"]]), { index: 3, everyone: true });

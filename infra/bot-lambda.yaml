@@ -20,6 +20,11 @@ Parameters:
     Type: String
     Default: ""
     Description: iCloud link of the shared "Pie Sync" shortcut (bot/README.md). Empty means Apple Health sync is off.
+  TickState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: The every-minute check. DISABLED keeps a deployment that isn't taking messages yet from texting anyone or reading polls.
   PhotonSecretName:
     Type: String
     Default: photon/project-secret
@@ -145,7 +150,7 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       ScheduleExpression: rate(1 minute)
-      State: ENABLED
+      State: !Ref TickState
       Targets:
         - Id: plan-tick
           Arn: !GetAtt BotFunction.Arn

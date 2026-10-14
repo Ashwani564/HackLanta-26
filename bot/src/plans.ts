@@ -136,6 +136,8 @@ const NUDGE_MS = () => minutes(Number(process.env.PLAN_NUDGE_MIN ?? 0));
 /** After asking for someone's location, how long to wait for them to share before the place poll goes out anyway. */
 const LOC_STEP_MS = () => Number(process.env.PLAN_LOC_STEP_SEC ?? 45) * 1000;
 const GIVE_UP_MS = () => minutes(Number(process.env.PLAN_GIVE_UP_MIN ?? 5));
+/** No plan stays active longer than this, whatever it is waiting on. A plan that can never finish would otherwise keep the every-minute check busy for days. */
+const MAX_PLAN_MS = () => minutes(Number(process.env.PLAN_MAX_MIN ?? 180));
 /** A multi-pick poll counts once nothing has changed for this long. */
 const SETTLE_MS = () => Number(process.env.PLAN_SETTLE_SEC ?? 3) * 1000;
 /** How long the place step waits for people who haven't shared their location. */
@@ -585,6 +587,9 @@ async function sendConfirms(plan: Plan, d: PlanDeps) {
 
 async function stageConfirm(plan: Plan, d: PlanDeps): Promise<boolean> {
   await sendPlaceAsks(plan, d);
+  // Someone's "does this time work?" waits for their open place poll. If that poll could never time out here,
+  // neither question would ever close and the plan would sit in this stage for good.
+  await chase(plan, d, "place");
   await sendConfirms(plan, d);
   await chase(plan, d, "confirm");
   if (askers(plan).some((p) => p.needsConfirm && !p.confirm) || waiting(plan, "confirm").length > 0) {
@@ -669,6 +674,15 @@ const dateLabel = (day: Day, nowMs: number) =>
 /** Move a plan as far forward as the answers allow. Safe to call repeatedly. */
 export async function advance(plan: Plan, d: PlanDeps): Promise<void> {
   if (isOver(plan)) return;
+  if (d.now() - plan.createdAt > MAX_PLAN_MS()) {
+    // Closed even if the organizer can't be told: a send that keeps failing is one of the ways a plan gets stuck.
+    plan.stage = "failed";
+    await d.sendText(plan.organizer.phone, `couldn't get ${plan.meal} sorted: ran out of time waiting on everyone`).catch((err) => console.warn(`  plan ${plan.id}: couldn't tell the organizer it lapsed: ${(err as Error).message}`));
+    await finish(plan);
+    await savePlan(plan);
+    console.log(`  plan ${plan.id}: dropped after ${Math.round(MAX_PLAN_MS() / 60_000)} minutes`);
+    return;
+  }
   if (stageOf(plan) === "ask_time") {
     // Waiting on the organizer's typed answer; that only lives as long as the context window.
     if (!contextOpen(plan, d.now())) {
@@ -779,7 +793,8 @@ export async function tickPlans(d: PlanDeps, spanMs = 0) {
     for (const id of ids) {
       await withLease(id, async () => {
         const plan = await getPlan(id);
-        if (!plan) return void (await setActive((await activeIds()).filter((x) => x !== id)));
+        // Gone, or over but still listed: off the list, or this check would keep looking at it for the whole minute, every minute.
+        if (!plan || isOver(plan)) return void (await setActive((await activeIds()).filter((x) => x !== id)));
         await advance(plan, d);
       }).catch((err) => console.warn(`  plan ${id} tick failed: ${(err as Error).message}`));
     }

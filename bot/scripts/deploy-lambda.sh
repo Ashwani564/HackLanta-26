@@ -2,11 +2,20 @@
 # Build and deploy the Lambda webhook bot (infra/bot-lambda.yaml). Needs `aws login` first.
 #   bot/scripts/deploy-lambda.sh            build + deploy stack + upload code
 #   bot/scripts/deploy-lambda.sh --code     build + upload code only
+# Set EXPECTED_ACCOUNT=<account id> to refuse any other account (there is more than one: pick it with AWS_PROFILE).
+# Set TICK_STATE=DISABLED to deploy with the every-minute check off; like the health link, a plain deploy keeps what's stored.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REGION="${AWS_REGION:-us-east-2}"
 STACK=dining-bot
 OUT=dist/lambda
+
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+if [[ -n "${EXPECTED_ACCOUNT:-}" && "$ACCOUNT" != "$EXPECTED_ACCOUNT" ]]; then
+  echo "wrong AWS account: $ACCOUNT (expected $EXPECTED_ACCOUNT). check AWS_PROFILE." >&2
+  exit 1
+fi
+echo "==> AWS account $ACCOUNT, region $REGION"
 
 echo "==> bundling"
 rm -rf "$OUT" && mkdir -p "$OUT"
@@ -43,6 +52,7 @@ if [[ "${1:-}" != "--code" ]]; then
   aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file ../infra/bot-lambda.yaml \
     --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
     --parameter-overrides "DbClusterArn=$CLUSTER" "DbSecretArn=$SECRET" "FfmpegLayerArn=$FFMPEG_LAYER" \
+    ${TICK_STATE:+"TickState=$TICK_STATE"} \
     ${HEALTH_SHORTCUT_URL:+"HealthShortcutUrl=$HEALTH_SHORTCUT_URL"}  # only when set, so a plain deploy keeps the stored link
 fi
 
